@@ -11,6 +11,7 @@
     <ClCompile Include="..\src\VoiceTrainer.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClInclude Include="..\include\myvoice\CommandShell.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\include\myvoice\VoiceConverter.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\include\myvoice\EnginePaths.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\include\myvoice\VoiceTrainer.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\src\Process.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>

@@ -1,4 +1,5 @@
 #include "myvoice/CommandShell.h"
+#include "myvoice/EnginePaths.h"
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
@@ -18,6 +19,13 @@ bool contains(const std::vector<myvoice::Suggestion>& results, const std::string
 int main() {
     try {
         myvoice::CommandShell shell;
+        // 从内置源码查找引擎；无须提供 /rvc-root 或 /seed-root。
+        check(std::filesystem::is_regular_file(
+                  myvoice::resolve_engine_root({}, "rvc", "infer/cli.py") / "infer/cli.py"),
+              "bundled RVC root");
+        check(std::filesystem::is_regular_file(
+                  myvoice::resolve_engine_root({}, "seed-vc", "inference_v2.py") / "inference_v2.py"),
+              "bundled Seed-VC root");
         using myvoice::ConsoleMenu;
         using myvoice::CommandAction;
         check(shell.menu() == ConsoleMenu::Main, "must start at main menu");

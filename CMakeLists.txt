@@ -12,7 +12,10 @@ add_library(myvoice_core STATIC
 )
 add_library(myvoice::core ALIAS myvoice_core)
 # 工程源码目录可通过 VS2022 任意工作目录启动；安装部署时可用 /train-script 覆盖。
-target_compile_definitions(myvoice_core PRIVATE MYVOICE_TRAIN_BRIDGE_SCRIPT="${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py")
+target_compile_definitions(myvoice_core PRIVATE
+    MYVOICE_TRAIN_BRIDGE_SCRIPT="${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py"
+    MYVOICE_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+)
 target_include_directories(myvoice_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

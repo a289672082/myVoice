@@ -1,4 +1,5 @@
 #include "myvoice/VoiceConverter.h"
+#include "myvoice/EnginePaths.h"
 #include "Process.h"
 
 #include <algorithm>
@@ -77,7 +78,9 @@ Result VoiceConverter::convert(const Request& request) const {
     if (!fs::is_directory(output.parent_path()))
         throw std::invalid_argument("Output parent directory does not exist");
 
-    const fs::path project_root = rvc ? configuration_.rvc_root : configuration_.seed_vc_root;
+    const fs::path project_root = rvc
+        ? resolve_engine_root(configuration_.rvc_root, "rvc", "infer/cli.py")
+        : resolve_engine_root(configuration_.seed_vc_root, "seed-vc", "inference_v2.py");
     if (project_root.empty() || !fs::is_directory(project_root))
         throw std::invalid_argument(rvc ? "RVC root must be an existing directory" :
                                            "Seed-VC root must be an existing directory");
