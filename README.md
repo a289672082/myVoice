@@ -1,138 +1,158 @@
 # myVoice
 
-C++17、Visual Studio 2022、Windows/Linux 的 **FTXUI 交互式语音转换控制台**。输入原始音频文件和目标声音参考文件，调用本地 [Seed-VC](https://github.com/Plachtaa/seed-vc) 模型生成目标音色音频。**不需要麦克风或提前训练 RVC**。
+Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音色训练** 项目。可在 **Visual Studio 2022** 中使用 CMake 工程（自动生成 `.sln`）。命令统一以 `/` 开头，支持实时命令提示、Tab 补全、文件路径补全和历史命令。
 
-- **FTXUI 控制台**：无参数运行 `myvoice_cli`，提供输入面板、消息记录、推理状态提示。
-- **统一 `/` 命令**：交互模式和批处理模式都使用 `/source`、`/target`、`/output` 等。
-- **自动提示/补全**：输入 `/` 显示候选命令；输入 `/eng` 提示 `/engine`；输入 `/engine s` 提示 `speech/singing`；路径参数支持文件名补全。**Tab** 填充第一个匹配项，**Enter** 执行，**↑/↓** 查看历史。
-- **异步调用**：FTXUI 的推理工作放在后台线程，执行期间界面仍可响应；Python 的 stdout/stderr 会被隔离，失败时显示末尾日志；内部仍由 C++ 创建本地 Python 子进程。
-- **引擎**：`speech` → Seed-VC V2，`singing` → Seed-VC V1 F0 条件模型，歌声默认不移调。
+> **FTXUI v7.0.3 全部所需源码已内置到 `third_party/ftxui/`**（MIT，保留原 LICENSE）。CMake **只从本地源码编译**，不使用 `FetchContent`、Git 子模块或 `find_package(ftxui)`，**配置和 C++ 构建无需联网**。AI 模型、PyTorch、CUDA、RVC/Seed-VC Python 仓库和权重不在此仓库内，需要单独安装。
 
-**注意**：这个版本没有自动音域映射/失真修复模块，真实音质需要使用模型权重与音频进行验证。Seed-VC 推理依赖及权重需另外安装，未直接捆绑到本仓库。
+## 功能
 
-## 一、编译
+| 功能 | 当前实现 |
+| --- | --- |
+| FTXUI 控制台、`/` 命令、Tab 自动补全 | ✅ |
+| Windows / VS2022、Linux 编译 | ✅ CMake |
+| `/engine speech` | Seed-VC V2 零样本普通语音转换 |
+| `/engine singing` | Seed-VC V1 带 F0 条件歌声转换（默认不移调） |
+| `/train` | RVC V2 48k F0 单说话人训练、RMVPE、HuBERT、索引生成 |
+| `/engine rvc` | 使用训练后的 RVC `.pth` 文件进行离线推理 |
+| `/train-log` | 查看训练日志尾部 |
+| 高音失真自动修复 / 自动音域映射 | **未实现**，不能保证消除女声高音转男声失真 |
+| 实时麦克风、GUI 训练参数面板、纯 C++ 模型训练 | **未实现** |
 
-需要 CMake >= 3.24 和 C++17 编译器。FTXUI 版本固定为 **v7.0.3**（MIT），CMake 优先寻找本机安装版本，未找到时通过 FetchContent 下载；首次配置需要联网。也可设置 `FETCHCONTENT_SOURCE_DIR_FTXUI` 指向已下载的源码进行离线构建。
+训练流水线实际调用你独立安装的 RVC 官方 Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
 
-### Windows / VS2022
+## 一、VS2022 编译（离线 CMake）
 
-安装 VS2022 **使用 C++ 的桌面开发** 工作负载；用 Visual Studio **打开文件夹**选择 `windows-vs2022` 配置，或在 Developer PowerShell 执行：
+安装 Visual Studio 2022 的“使用 C++ 的桌面开发”工作负载，以及 CMake >= 3.24。在 Visual Studio 中使用 **打开文件夹**打开仓库根目录并选择 `windows-vs2022`，或运行：
 
 ```powershell
 cmake --preset windows-vs2022
 cmake --build --preset windows-vs2022
 ctest --preset windows-vs2022
+.\build\vs2022\Release\myvoice_cli.exe
 ```
 
-生成 `build/vs2022/myVoice.sln` 和 `build/vs2022/Release/myvoice_cli.exe`。
-
-### Linux
+Linux：
 
 ```bash
 cmake --preset linux
 cmake --build --preset linux
 ctest --preset linux
+./build/linux/myvoice_cli
 ```
 
-生成 `build/linux/myvoice_cli`。
+如只需命令行无 TUI，可以加 `-DMYVOICE_WITH_FTXUI=OFF`。FTXUI 源码无需重新下载。CI 同时构建两个平台并运行模拟测试。
 
-没有网络、只需要构建 C++ 核心和运行命令解析/模拟推理测试时，可额外设置 `-DMYVOICE_WITH_FTXUI=OFF`；此时不构建交互界面，但仍支持 `/` 命令批处理。
+## 二、训练男声音色（RVC V2）
 
-## 二、安装 AI 模型
+1. 另行安装 [RVC 官方源码](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) 的 Python 环境及依赖（推荐可用 CUDA GPU），取得 `assets/hubert_base/`、`assets/rmvpe/rmvpe.pt`、`assets/pretrained_v2/f0G48k.pth`、`f0D48k.pth` 等**官方**预训练权重。训练桥接脚本只适配仓库中具有 `train/preprocess.py`、`train/dataset/extract_f0.py`、`train/dataset/extract_hubert_feature.py`、`train/train.py`、`train/train_index.py` 的版本。
+2. 把得到授权的目标男声录音（建议有正常讲话和真实高音/唱歌内容）放到独立目录，比如 `D:\voice_data\male`。尽量避免音乐伴奏、噪声、明显削波和 TTS 合成伪影。训练阶段使用的是**目标男声**，不是要转换的女声音频。
+3. 打开 FTXUI，依次输入：
 
-参照 [Seed-VC README](https://github.com/Plachtaa/seed-vc) 安装 Python 3.10、PyTorch 及 `requirements.txt`，准备模型权重（按官方说明下载或首次运行时获取）。这里需要将 `/seed-root` 设置为**包含** `inference.py` 和 `inference_v2.py` **的根目录**，`/python` 设置为对应虚拟环境解释器。建议有 NVIDIA CUDA 显卡。
-
-## 三、FTXUI 交互控制台
-
-直接运行：
-
-```powershell
-.\build\vs2022\Release\myvoice_cli.exe
+```text
+/python "D:\RVC\.venv\Scripts\python.exe"
+/rvc-root "D:\RVC"
+/dataset "D:\voice_data\male"
+/train-name male_v1
+/epochs 200
+/batch 4
+/workers 4
+/save-every 20
+/device cuda
+/gpu 0
+/index on
+/train-timeout 43200
+/train
 ```
 
-进入界面后输入以下命令，**每行输入一条后回车**：
+训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\RVC\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\RVC\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\RVC\logs\male_v1\`，索引可链接到 `assets/indices`。
+
+- `epochs`：1..10000，实际训练效果需对照评估检查点；不是越大越好。
+- `batch`：1..128，显存不足时可降低；`/device cpu` 可用于排查/测试，但训练极慢。
+- `index off`：仅训练权重，不构建 FAISS 索引。
+- 训练不会自动下载模型权重，也不会自动从 IndexTTS 生成素材；如果使用合成数据，先自行生成和筛选。**只有高音真实覆盖的合格训练素材才可能改善高音失真**。
+
+**提示**：某些 RVC 版本的训练脚本/资源布局不同。本实现针对已核对的 `RVC-Project/Retrieval-based-Voice-Conversion-WebUI` 的 `train/*` 结构；不保证兼容所有老分支或第三方打包版。失败时可从 `/train-log` 找到阶段和底层错误。
+
+## 三、使用训练好的 RVC 音色转换
+
+训练完成并取得 `.pth` 文件后：
+
+```text
+/python "D:\RVC\.venv\Scripts\python.exe"
+/rvc-root "D:\RVC"
+/engine rvc
+/model "D:\RVC\assets\weights\male_v1.pth"
+/source "D:\audio\female.wav"
+/output "D:\audio\result.wav"
+/convert
+```
+
+RVC 推理默认 RMVPE、`pitch=0`、`index-rate=0`，**不要求手工操作移调滑条**，也不需要再输入参考音频；但这并非自动基频校正。高音出现失真时，需要针对训练数据和转换模型实测。`/overwrite on` 可以覆盖已经存在的输出文件（但禁止覆盖源文件）。
+
+## 四、免训练的 Seed-VC 转换
+
+按 [Seed-VC 官方仓库](https://github.com/Plachtaa/seed-vc) 安装相应 Python 环境和权重：
 
 ```text
 /python "D:\Seed-VC\.venv\Scripts\python.exe"
 /seed-root "D:\Seed-VC"
 /source "D:\audio\female.wav"
-/target "D:\audio\male.wav"
-/output "D:\audio\converted.wav"
+/target "D:\audio\male_reference.wav"
+/output "D:\audio\result.wav"
 /engine speech
-/steps 30
-/show
 /convert
 ```
 
-如果转换高音歌声：使用 `/engine singing`。默认将歌声音高保持原样，不会强制把女声降一个八度。输出文件已存在时可先输入 `/overwrite on`（不会覆盖原始输入文件）；`/quit` 退出控制台。
+唱歌时用 `/engine singing`，官方 F0 条件模型默认不移调，避免影响原始伴奏调性。
 
-### 自动提示与快捷键
+## 五、`/` 命令和自动提示
 
-| 输入/按键 | 行为 |
-| --- | --- |
-| `/` | 列出可用命令及说明 |
-| `/en` | 提示 `/engine` |
-| `/engine s` | 提示 `speech`、`singing` 中符合前缀的项 |
-| `/source D:/au` | 列出符合前缀的文件和目录（存在时） |
-| `Tab` | 自动填入当前第一个候选项 |
-| `Enter` | 执行命令 |
-| `↑`、`↓` | 浏览已输入的命令历史 |
-| `/help` | 查看全部命令和参数用法 |
-| `/show` | 显示当前设置 |
+输入 `/` 显示可用命令；输入 `/tra` 会列出 `/train`、`/train-name`、`/train-timeout`、`/train-log` 等候选。输入 `/engine r` 时提示 `/engine rvc`。输入 `/source D:/au` 会根据本地文件系统提示路径；**Tab** 补全、**Enter** 执行、**↑↓** 查阅历史。路径有空格时加引号；Windows 反斜杠不会被丢弃。
 
-有空格的路径必须用引号括起，如 `/source "D:\voice files\input.wav"`；Windows 路径反斜杠不会被作为转义字符剥离。
+使用 `/help` 查看全部命令，`/show` 查看转换和训练参数，`/quit` 退出（有运行中任务时需先完成）。
 
-## 四、自动化调用（无 FTXUI 交互）
+### 无界面批处理
 
-只要提供音频输入参数，CLI 就运行一次转换，并在完成后返回退出码。所有选项都使用 `/`，没有 `--` 前缀。
-
-**Windows PowerShell**：
+无需进入 TUI，直接把 `/` 参数传给可执行文件，并以 `/train` 或 `/convert` 作为动作：
 
 ```powershell
 .\build\vs2022\Release\myvoice_cli.exe `
-  /python "D:\Seed-VC\.venv\Scripts\python.exe" `
-  /seed-root "D:\Seed-VC" `
-  /source "D:\audio\female.wav" `
-  /target "D:\audio\male.wav" `
-  /output "D:\audio\result.wav" `
-  /engine speech
+  /python "D:\RVC\.venv\Scripts\python.exe" `
+  /rvc-root "D:\RVC" `
+  /dataset "D:\voice_data\male" `
+  /train-name male_v1 /epochs 200 /batch 4 /train
 ```
 
-**Linux**：
+Linux 也可使用相同 `/` 命令。脚本执行失败会输出非零退出码，训练细节保存在日志中。
 
-```bash
-./build/linux/myvoice_cli \
-  /python /home/user/seed-vc/.venv/bin/python \
-  /seed-root /home/user/seed-vc \
-  /source /home/user/female.wav \
-  /target /home/user/male.wav \
-  /output /home/user/result.wav \
-  /engine singing /steps 40
-```
-
-`/timeout 900` 设置超时秒数，`/overwrite on` 允许输出已存在时覆盖（保护输入文件）。`/help` 可在无模型环境下查询帮助；`/interactive` 可以显式进入 FTXUI。
-
-## 五、C++ API
+## 六、C++ API 及结构
 
 ```cpp
+#include <myvoice/VoiceTrainer.h>
 #include <myvoice/VoiceConverter.h>
-myvoice::Configuration config;
-config.seed_vc_root = "D:/Seed-VC";
-config.python = "D:/Seed-VC/.venv/Scripts/python.exe";
+
+myvoice::TrainingConfiguration train_config;
+train_config.rvc_root = "D:/RVC";
+train_config.python = "D:/RVC/.venv/Scripts/python.exe";
+myvoice::TrainingRequest train;
+train.dataset = "D:/voice_data/male";
+train.name = "male_v1";
+train.epochs = 200;
+auto training = myvoice::VoiceTrainer(train_config).train(train);
+
+myvoice::Configuration cfg;
+cfg.python = train_config.python;
+cfg.rvc_root = train_config.rvc_root;
 myvoice::Request req;
-req.source = "female.wav";
-req.target = "male.wav";
-req.output = "converted.wav";
-req.mode = myvoice::Mode::Speech;
-auto result = myvoice::VoiceConverter(config).convert(req);
+req.mode = myvoice::Mode::Rvc;
+req.trained_model = "D:/RVC/assets/weights/male_v1.pth";
+req.source = "D:/audio/female.wav";
+req.output = "D:/audio/result.wav";
+auto output = myvoice::VoiceConverter(cfg).convert(req);
 ```
 
-核心接口独立于 FTXUI，可以通过 `myvoice::CommandShell` 在其他应用中复用 `/` 命令解析和自动提示。C++ 核心本身不依赖 FTXUI 或 PyTorch。
+关键目录：`apps/` TUI/CLI；`src/` 进程与推理/训练调度；`include/myvoice/` 公共 C++ API；`scripts/rvc_train.py` 官方 RVC 训练桥接；`tests/` 模拟推理与训练测试；`third_party/ftxui/` 固定版本源码和 MIT 许可证。
 
-## 六、测试和边界
+## 安全与许可证
 
-CI 在 Linux 和 Windows Server 2022 编译、运行纯 C++ 命令解析及自动补全测试、模拟 Python 后端测试（包括路径空格、超时、失败退出、输出保护）和 `/help` `/show` CLI 测试。**CI 不运行真实 Seed-VC 权重，不能由此认定音色转换效果已经验证。**
-
-FTXUI 提供异步控制台，但 Python 子进程一次调用会重新加载模型，不属于实时麦克风变声。Windows 目前超时只保证终止直接 Python 子进程，不保证结束它衍生的所有进程；Linux 使用独立进程组终止。
-
-仓库 C++ 代码使用 MIT。FTXUI 使用 MIT；Seed-VC 为独立 GPL-3.0 上游项目，模型和第三方依赖另有许可证。请遵守上游许可并获得目标声音所有者的授权。
+仓库自身许可证见 `LICENSE`；FTXUI 原许可证见 `third_party/ftxui/LICENSE`。RVC、Seed-VC、模型权重、数据集和第三方预训练模型遵循各自许可证；用户应拥有目标声音的合法使用授权。此程序不提供或下载未经授权的真人声音数据。

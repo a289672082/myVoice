@@ -36,12 +36,14 @@ int run(const std::vector<std::string>& args) {
     }
     myvoice::CommandShell shell;
     bool request_conversion = false;
+    bool request_training = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& key = args[i];
-        if (key == "/help" || key == "/show" || key == "/convert") {
+        if (key == "/help" || key == "/show" || key == "/convert" || key == "/train" || key == "/train-log") {
             const auto result = shell.execute(key);
             if (!result.success) throw std::invalid_argument(result.message);
             if (key == "/convert") request_conversion = true;
+            else if (key == "/train") request_training = true;
             else std::cout << result.message << '\n';
             continue;
         }
@@ -52,8 +54,16 @@ int run(const std::vector<std::string>& args) {
         if (i + 1 >= args.size()) throw std::invalid_argument("Missing value after " + key);
         const auto result = shell.set_option(key, args[++i]);
         if (!result.success) throw std::invalid_argument(result.message);
-        if (key == "/source" || key == "/target" || key == "/output")
+        if (key == "/source" || key == "/target" || key == "/output" || key == "/model")
             request_conversion = true;
+    }
+    if (request_training && request_conversion)
+        throw std::invalid_argument("Specify /train or /convert, not both");
+    if (request_training) {
+        const auto result = myvoice::VoiceTrainer(shell.training_configuration).train(shell.training);
+        std::cout << "Training successful: " << result.experiment_dir.string()
+                  << "\nLog: " << result.log_file.string() << "\n";
+        return 0;
     }
     if (!request_conversion) return 0;
     const auto result = myvoice::VoiceConverter(shell.configuration).convert(shell.request);

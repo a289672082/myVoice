@@ -34,6 +34,18 @@ int main() {
         check(!shell.execute("/engine invalid").success, "reject unknown model");
         check(shell.execute("/show").message.find("singing") != std::string::npos, "show current settings");
         check(shell.execute("/convert").action == myvoice::CommandAction::Convert, "convert intent");
+        check(shell.execute("/engine rvc").success && shell.request.mode == myvoice::Mode::Rvc, "RVC mode");
+        check(contains(shell.suggestions("/engine r"), "/engine rvc"), "RVC mode completion");
+        check(!shell.execute("/train-log").success, "no training log error");
+        check(shell.execute("/train").action == myvoice::CommandAction::Train, "train intent");
+        check(shell.execute("/dataset \"some voices\"").success, "dataset path");
+        check(shell.execute("/rvc-root \"test root\"").success, "RVC root path");
+        check(shell.execute("/device cuda").success, "CUDA mode");
+        check(shell.execute("/epochs 50").success && shell.training.epochs == 50, "epochs");
+        check(shell.execute("/index off").success && !shell.training.build_index, "index mode");
+        check(contains(shell.suggestions("/tr"), "/train"), "training completion");
+        check(contains(shell.suggestions("/device c"), "/device cuda"), "device completion");
+        check(!shell.execute("/epochs 0").success, "bad epochs validation");
         check(shell.execute("/quit").action == myvoice::CommandAction::Quit, "quit intent");
         check(shell.execute("/help").message.find("/seed-root") != std::string::npos, "help text");
         check(!shell.execute("/unknown xxx").success, "reject unknown command");

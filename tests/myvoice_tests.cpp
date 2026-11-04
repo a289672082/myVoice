@@ -110,6 +110,39 @@ with wave.open(str(out / 'converted.wav'), 'wb') as wav:
         req.source = ws.dir / "female voice.wav";
         req.diffusion_steps = 0;
         require(throws([&] { (void)converter.convert(req); }), "expected failure");
+
+        // 训练完成的 RVC .pth 可直接离线变声，无需重新输入目标参考音频。
+        const auto rvc = ws.dir / "RVC root with spaces";
+        fs::create_directories(rvc / "infer");
+        file(rvc / "infer/cli.py", R"PY(
+import argparse
+import pathlib
+import wave
+parser=argparse.ArgumentParser()
+parser.add_argument('--model', required=True)
+parser.add_argument('--input', required=True)
+parser.add_argument('--output', required=True)
+args,_=parser.parse_known_args()
+assert pathlib.Path(args.model).is_file()
+with wave.open(args.output, 'wb') as wav:
+    wav.setnchannels(1)
+    wav.setsampwidth(2)
+    wav.setframerate(16000)
+    wav.writeframes(b'\x00\x00'*100)
+)PY");
+        file(ws.dir / "trained male.pth", "pretend model weights");
+        cfg.rvc_root = rvc;
+        cfg.timeout = std::chrono::seconds(10);
+        myvoice::Request rr;
+        rr.mode = myvoice::Mode::Rvc;
+        rr.source = ws.dir / "female voice.wav";
+        rr.trained_model = ws.dir / "trained male.pth";
+        rr.output = ws.dir / "rvc output.wav";
+        require(myvoice::VoiceConverter(cfg).convert(rr).output == fs::absolute(rr.output),
+                "RVC inference path");
+        rr.trained_model.clear();
+        require(throws([&]{ (void)myvoice::VoiceConverter(cfg).convert(rr); }),
+                "RVC model required");
         std::cout << "All myVoice tests passed\n";
         return 0;
     } catch (const std::exception& e) {
