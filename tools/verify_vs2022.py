@@ -23,8 +23,8 @@ def main():
         if name + ".vcxproj" not in sln:
             errors.append("Missing solution entry: " + name)
         xml = ET.parse(project).getroot()
-        cl = {v.attrib["Include"].replace("\\", "/") for v in xml.findall(".//ms:ClCompile", NS)}
-        hdr = {v.attrib["Include"].replace("\\", "/") for v in xml.findall(".//ms:ClInclude", NS)}
+        cl = {v.attrib["Include"].replace("\\", "/") for v in xml.findall(".//ms:ClCompile", NS) if "Include" in v.attrib}
+        hdr = {v.attrib["Include"].replace("\\", "/") for v in xml.findall(".//ms:ClInclude", NS) if "Include" in v.attrib}
         for item in cl | hdr:
             if not (PROJECT_DIR / item).is_file():
                 errors.append("Missing project source: " + name + " " + item)
