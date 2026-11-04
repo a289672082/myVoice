@@ -22,7 +22,7 @@ int run_tui() {
     auto app = App::TerminalOutput();
     std::string line = "/";
     std::vector<std::string> history;
-    std::vector<std::string> log = {"myVoice  |  /help 查看帮助  |  Tab 补全  |  上下键历史"};
+    std::vector<std::string> log = {"myVoice 主菜单  |  输入 /Seed-VC 或 /RVC 进入对应引擎"};
     std::size_t history_pos = 0;
     std::mutex worker_mutex;
     std::string worker_message;
@@ -59,17 +59,17 @@ int run_tui() {
                 return;
             }
             if (worker.joinable()) worker.join();  // 之前任务已经结束
-            auto config = shell.configuration;
+            auto config = shell.conversion_configuration();
             config.capture_child_output = true;  // Python stdout/stderr 不得破坏 FTXUI 画面
-            const auto request = shell.request;
+            const auto request = shell.conversion_request();
             const bool is_training = result.action == myvoice::CommandAction::Train;
             const auto training = shell.training;
             const auto training_config = shell.training_configuration;
             current_job = is_training ? "TRAINING" : "CONVERTING";
             log_message(is_training ? "正在后台训练 RVC：" + training.name +
                 " （进度日志在 RVC/logs/<name>/myvoice_train.log）" :
-                "正在后台运行 Seed-VC，请查看状态栏...");
-            worker = std::thread([&, config, request] {
+                "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
+            worker = std::thread([&, config, request, is_training, training, training_config] {
                 std::string outcome;
                 try {
                     if (is_training) {
@@ -143,7 +143,7 @@ int run_tui() {
             completion.push_back(text(hints[i].display) | dim);
         if (completion.empty()) completion.push_back(text("输入 / 选择命令；Tab 补全命令、路径与枚举参数") | dim);
         return vbox({
-            text(" myVoice  /  Voice Conversion Console ") | bold | color(Color::Cyan),
+            text(" myVoice / " + shell.menu_name() + "  |  Voice Conversion Console ") | bold | color(Color::Cyan),
             separator(),
             text(busy.load() ? "STATUS: " + current_job + "..." : "STATUS: READY") |
                 color(busy.load() ? Color::Yellow : Color::Green),
@@ -152,7 +152,9 @@ int run_tui() {
             separator(),
             hbox({text(" > "), input->Render()}) | border,
             vbox(std::move(completion)),
-            text("Enter 执行 | Tab 补全 | 上下键历史 | /train 训练 | /convert 转换 | /quit 退出") | dim
+            text(shell.menu() == myvoice::ConsoleMenu::Main ?
+                "Enter 执行 | Tab 补全 | /Seed-VC 进入 Seed-VC | /RVC 进入 RVC | /quit 退出" :
+                "Enter 执行 | Tab 补全 | 上下键历史 | /convert 转换 | /back 主菜单 | /help 命令") | dim
         }) | border;
     });
     app.Loop(view);
