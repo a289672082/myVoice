@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files"><UniqueIdentifier>{4C3EAD14-5F73-4D49-82BD-BA932F6F5A01}</UniqueIdentifier></Filter>
+    <Filter Include="Header Files"><UniqueIdentifier>{D4D1C36E-4BEF-43E5-A122-BB39D904D032}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\automerge.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\blink.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\bold.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\border.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\box_helper.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\canvas.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\clear_under.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\color.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\composite_decorator.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\dbox.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\dim.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\flex.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\flexbox.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\flexbox_config.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\flexbox_helper.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\focus.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\frame.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\gauge.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\graph.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\gridbox.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\hbox.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\hyperlink.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\inverted.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\italic.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\linear_gradient.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\node.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\node_decorator.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\paragraph.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\reflect.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\scroll_indicator.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\selection.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\selection_style.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\separator.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\size.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\spinner.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\strikethrough.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\table.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\text.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\underlined.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\underlined_double.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\util.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\dom\vbox.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\canvas.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\deprecated.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\direction.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\elements.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\flexbox_config.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\linear_gradient.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\node.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\requirement.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\selection.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\table.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\dom\take_any_args.hpp"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+</Project>

@@ -21,3 +21,19 @@ jobs:
         run: cmake --build --preset ${{ runner.os == 'Windows' && 'windows-vs2022' || 'linux' }}
       - name: Test
         run: ctest --preset ${{ runner.os == 'Windows' && 'windows-vs2022' || 'linux' }}
+
+      - name: Verify native VS2022 solution sources
+        run: python tools/verify_vs2022.py
+      - name: Setup MSBuild
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v2
+      - name: Build checked-in VS2022 solution
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: msbuild myVoice.sln /m /p:Configuration=Release /p:Platform=x64 /v:minimal
+      - name: Smoke-test checked-in VS2022 binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & ".\\build\\vs2022-native\\x64\\Release\\myvoice_cli.exe" /help
+          & ".\\build\\vs2022-native\\x64\\Release\\myvoice_shell_tests.exe"

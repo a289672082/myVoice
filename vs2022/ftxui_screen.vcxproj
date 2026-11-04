@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{E3D749F6-3898-429A-BC1B-67E33B1BB001}</ProjectGuid>
+    <RootNamespace>ftxui_screen</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)build\vs2022-native\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build\vs2022-native\obj\$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>ftxui_screen</TargetName>
+    
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)third_party\ftxui\include;$(SolutionDir)third_party\ftxui\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>IS_FTXUI_SCREEN_IMPL=1;_CRT_SECURE_NO_WARNINGS;WIN32;_WINDOWS;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 /wd4244 /wd4267 %(AdditionalOptions)</AdditionalOptions>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib/>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)third_party\ftxui\include;$(SolutionDir)third_party\ftxui\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>IS_FTXUI_SCREEN_IMPL=1;_CRT_SECURE_NO_WARNINGS;WIN32;_WINDOWS;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 /wd4244 /wd4267 %(AdditionalOptions)</AdditionalOptions>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib/>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\box.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\color.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\color_info.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\screen.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\string.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\surface.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\screen\terminal.cpp" />
+    <ClCompile Include="..\third_party\ftxui\src\ftxui\util\ref.cpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\box.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\cell.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\color.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\color_info.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\deprecated.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\image.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\pixel.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\screen.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\string.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\surface.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\screen\terminal.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\util\autoreset.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\util\export.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\util\ref.hpp" />
+    <ClInclude Include="..\third_party\ftxui\include\ftxui\util\warn_windows_macro.hpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

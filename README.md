@@ -20,6 +20,14 @@ Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音�
 
 训练流水线实际调用你独立安装的 RVC 官方 Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
 
+## VS2022 原生解决方案（可直接双击）
+  
+仓库根目录已包含 **`myVoice.sln`** 和 **`vs2022/*.vcxproj`**。打开 `myVoice.sln`，在 VS2022 选择 `x64`、`Debug` 或 `Release`，将 `myvoice_cli` 设为启动项目，按 **F5** 调试或按 **Ctrl+Shift+B** 编译。**无需先运行 CMake**。解决方案使用本仓库 `third_party/ftxui` 的全部本地源码，不下载 FTXUI，也不依赖 Python 安装来编译 C++。C++17 / MSVC v143 / Windows 10 SDK。
+
+该解决方案包含 `myvoice_cli`、`myvoice_core`、`ftxui_component`、`ftxui_dom`、`ftxui_screen` 和 `myvoice_shell_tests`，工程引用自动决定依赖编译顺序，输出位于 `build/vs2022-native/x64/<Debug|Release>/`；已在工程中指定从仓库根目录启动调试，`/train-script` 仍可显式指定桥接脚本。
+
+这是**真正检入仓库的 MSBuild 原生 VC++ 工程**，而不只是提示用 CMake 生成临时 `.sln`。原有 CMake 预设保持可用，适合 Linux 与跨平台 CI。源码变更后，可执行 `python tools/verify_vs2022.py` 检查解决方案列出的源文件是否与仓库一致；新增 FTXUI 文件时还需要同步更新对应 `.vcxproj`。
+
 ## 一、VS2022 编译（离线 CMake）
 
 安装 Visual Studio 2022 的“使用 C++ 的桌面开发”工作负载，以及 CMake >= 3.24。在 Visual Studio 中使用 **打开文件夹**打开仓库根目录并选择 `windows-vs2022`，或运行：
