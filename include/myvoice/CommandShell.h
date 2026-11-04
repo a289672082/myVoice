@@ -1,10 +1,11 @@
 #pragma once
 #include "myvoice/VoiceConverter.h"
+#include "myvoice/VoiceTrainer.h"
 #include <string>
 #include <vector>
 
 namespace myvoice {
-enum class CommandAction { None, Convert, Quit };
+enum class CommandAction { None, Convert, Train, Quit };
 struct CommandResult {
     CommandAction action = CommandAction::None;
     std::string message;
@@ -19,6 +20,8 @@ class CommandShell {
 public:
     Configuration configuration;
     Request request;
+    TrainingRequest training;
+    TrainingConfiguration training_configuration;
     CommandResult execute(const std::string& line);
     CommandResult set_option(const std::string& command, const std::string& value);
     std::vector<Suggestion> suggestions(const std::string& line) const;

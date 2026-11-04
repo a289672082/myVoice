@@ -1,5 +1,6 @@
 #include "myvoice/CommandShell.h"
 #include "myvoice/VoiceConverter.h"
+#include "myvoice/VoiceTrainer.h"
 
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
@@ -26,6 +27,7 @@ int run_tui() {
     std::mutex worker_mutex;
     std::string worker_message;
     std::atomic<bool> busy{false};
+    std::string current_job;
     std::thread worker;
 
     const auto log_message = [&](const std::string& message) {
@@ -47,30 +49,45 @@ int run_tui() {
             return;
         }
         if (result.action == myvoice::CommandAction::Quit) {
-            if (busy.load()) log_message("转换正在运行；完成后再退出，或 Ctrl+C 结束程序");
+            if (busy.load()) log_message("任务正在运行；完成后再退出，或 Ctrl+C 结束程序");
             else app.Exit();
             return;
         }
-        if (result.action == myvoice::CommandAction::Convert) {
+        if (result.action == myvoice::CommandAction::Convert || result.action == myvoice::CommandAction::Train) {
             if (busy.exchange(true)) {
-                log_message("已有转换任务在运行，请勿重复执行 /convert");
+                log_message("已有转换/训练任务正在运行，请等待完成");
                 return;
             }
             if (worker.joinable()) worker.join();  // 之前任务已经结束
             auto config = shell.configuration;
             config.capture_child_output = true;  // Python stdout/stderr 不得破坏 FTXUI 画面
             const auto request = shell.request;
-            log_message("正在后台运行 Seed-VC，请查看状态栏...");
+            const bool is_training = result.action == myvoice::CommandAction::Train;
+            const auto training = shell.training;
+            const auto training_config = shell.training_configuration;
+            current_job = is_training ? "TRAINING" : "CONVERTING";
+            log_message(is_training ? "正在后台训练 RVC：" + training.name +
+                " （进度日志在 RVC/logs/<name>/myvoice_train.log）" :
+                "正在后台运行 Seed-VC，请查看状态栏...");
             worker = std::thread([&, config, request] {
                 std::string outcome;
                 try {
-                    const auto result = myvoice::VoiceConverter(config).convert(request);
+                    if (is_training) {
+                        const auto result = myvoice::VoiceTrainer(training_config).train(training);
 #ifdef _WIN32
-                    outcome = "转换完成: " + result.output.u8string();
+                        outcome = "训练完成: " + result.experiment_dir.u8string();
 #else
-                    outcome = "转换完成: " + result.output.string();
+                        outcome = "训练完成: " + result.experiment_dir.string();
 #endif
-                    outcome += " (" + std::to_string(result.elapsed.count()) + "ms)";
+                    } else {
+                        const auto result = myvoice::VoiceConverter(config).convert(request);
+#ifdef _WIN32
+                        outcome = "转换完成: " + result.output.u8string();
+#else
+                        outcome = "转换完成: " + result.output.string();
+#endif
+                        outcome += " (" + std::to_string(result.elapsed.count()) + "ms)";
+                    }
                 } catch (const std::exception& ex) {
                     outcome = std::string("ERROR: ") + ex.what();
                 }
@@ -128,14 +145,14 @@ int run_tui() {
         return vbox({
             text(" myVoice  /  Voice Conversion Console ") | bold | color(Color::Cyan),
             separator(),
-            text(busy.load() ? "STATUS: CONVERTING..." : "STATUS: READY") |
+            text(busy.load() ? "STATUS: " + current_job + "..." : "STATUS: READY") |
                 color(busy.load() ? Color::Yellow : Color::Green),
             separator(),
             vbox(std::move(lines)) | flex,
             separator(),
             hbox({text(" > "), input->Render()}) | border,
             vbox(std::move(completion)),
-            text("Enter 执行 | Tab 补全 | 上下键历史 | /convert 转换 | /quit 退出") | dim
+            text("Enter 执行 | Tab 补全 | 上下键历史 | /train 训练 | /convert 转换 | /quit 退出") | dim
         }) | border;
     });
     app.Loop(view);

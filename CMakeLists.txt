@@ -8,8 +8,11 @@ add_library(myvoice_core STATIC
     src/Process.cpp
     src/CommandShell.cpp
     src/VoiceConverter.cpp
+    src/VoiceTrainer.cpp
 )
 add_library(myvoice::core ALIAS myvoice_core)
+# 工程源码目录可通过 VS2022 任意工作目录启动；安装部署时可用 /train-script 覆盖。
+target_compile_definitions(myvoice_core PRIVATE MYVOICE_TRAIN_BRIDGE_SCRIPT="${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py")
 target_include_directories(myvoice_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -25,21 +28,11 @@ endif()
 add_executable(myvoice_cli apps/myvoice_cli.cpp)
 target_link_libraries(myvoice_cli PRIVATE myvoice::core)
 if(MYVOICE_WITH_FTXUI)
-    # 仅使用已安装的 FTXUI，或在配置时固定拉取 v7.0.3。
-    # 可使用 FETCHCONTENT_SOURCE_DIR_FTXUI 指向本地依赖以便离线构建。
-    find_package(ftxui 7.0.3 QUIET CONFIG)
-    if(NOT ftxui_FOUND)
-        include(FetchContent)
-        set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-        set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        FetchContent_Declare(ftxui
-            GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
-            GIT_TAG v7.0.3
-            GIT_SHALLOW TRUE
-        )
-        FetchContent_MakeAvailable(ftxui)
+    # 只从仓库本地编译；禁止网络 FetchContent 或外部 find_package。
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ftxui/include/ftxui/component/app.hpp")
+        message(FATAL_ERROR "Vendored FTXUI missing: third_party/ftxui. Clone the complete myVoice repository.")
     endif()
+    add_subdirectory(third_party/ftxui)
     target_sources(myvoice_cli PRIVATE apps/myvoice_tui.cpp)
     target_compile_definitions(myvoice_cli PRIVATE MYVOICE_WITH_FTXUI=1)
     target_link_libraries(myvoice_cli PRIVATE ftxui::component ftxui::dom ftxui::screen)
@@ -65,6 +58,10 @@ if(BUILD_TESTING AND MYVOICE_BUILD_TESTS)
         set_tests_properties(myvoice_integration PROPERTIES TIMEOUT 20)
         add_test(NAME myvoice_cli_help COMMAND myvoice_cli /help)
         add_test(NAME myvoice_cli_show COMMAND myvoice_cli /engine singing /show)
+        add_test(NAME myvoice_rvc_training_mock
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rvc_train.py"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py")
+        set_tests_properties(myvoice_rvc_training_mock PROPERTIES TIMEOUT 30)
     else()
         message(STATUS "Python3 not found; mock inference integration test skipped")
     endif()

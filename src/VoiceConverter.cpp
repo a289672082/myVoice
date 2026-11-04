@@ -67,32 +67,42 @@ Result VoiceConverter::convert(const Request& request) const {
         throw std::invalid_argument("Output path must end with .wav");
 
     const fs::path source = existing_file(request.source, "Source audio");
-    const fs::path target = existing_file(request.target, "Target audio");
+    const bool rvc = request.mode == Mode::Rvc;
+    const fs::path target = rvc ? fs::path{} : existing_file(request.target, "Target audio");
     const fs::path output = fs::absolute(request.output).lexically_normal();
-    if (fs::weakly_canonical(output) == source || fs::weakly_canonical(output) == target)
+    if (fs::weakly_canonical(output) == source || (!target.empty() && fs::weakly_canonical(output) == target))
         throw std::invalid_argument("Output cannot overwrite source/target audio");
     if (fs::exists(output) && !request.overwrite)
         throw std::invalid_argument("Output already exists (use /overwrite on to replace)");
     if (!fs::is_directory(output.parent_path()))
         throw std::invalid_argument("Output parent directory does not exist");
 
-    if (configuration_.seed_vc_root.empty() || !fs::is_directory(configuration_.seed_vc_root))
-        throw std::invalid_argument("Seed-VC root must be an existing directory");
-    const fs::path seed_root = fs::canonical(configuration_.seed_vc_root);
-    const fs::path script = request.mode == Mode::Speech ? "inference_v2.py" : "inference.py";
-    if (!fs::is_regular_file(seed_root / script))
-        throw std::invalid_argument("Missing Seed-VC script: " + (seed_root / script).string());
+    const fs::path project_root = rvc ? configuration_.rvc_root : configuration_.seed_vc_root;
+    if (project_root.empty() || !fs::is_directory(project_root))
+        throw std::invalid_argument(rvc ? "RVC root must be an existing directory" :
+                                           "Seed-VC root must be an existing directory");
+    const fs::path root = fs::canonical(project_root);
+    const fs::path script = rvc ? "infer/cli.py" :
+        request.mode == Mode::Speech ? "inference_v2.py" : "inference.py";
+    if (!fs::is_regular_file(root / script))
+        throw std::invalid_argument("Missing inference script: " + (root / script).string());
 
     const auto python = normalized_executable(configuration_.python);
     TemporaryDirectory temporary;
-    std::vector<fs::path> args = {
-        script, "--source", source, "--target", target, "--output", temporary.path,
-        "--diffusion-steps", std::to_string(request.diffusion_steps)
-    };
-    if (request.mode == Mode::Singing) {
-        // 唱歌要保留原始音符/伴奏调性，不自动升降八度。
-        args.insert(args.end(), {"--f0-condition", "True", "--auto-f0-adjust", "False",
-                                 "--semi-tone-shift", "0"});
+    std::vector<fs::path> args;
+    if (rvc) {
+        const fs::path model = existing_file(request.trained_model, "Trained RVC model");
+        args = {script, "--model", model, "--input", source,
+                "--output", temporary.path / "converted.wav", "--f0-method", "rmvpe",
+                "--pitch", "0", "--index-rate", "0", "--overwrite"};
+    } else {
+        args = {script, "--source", source, "--target", target, "--output", temporary.path,
+                "--diffusion-steps", std::to_string(request.diffusion_steps)};
+        if (request.mode == Mode::Singing) {
+            // 歌声默认保留旋律，避免意外移调。
+            args.insert(args.end(), {"--f0-condition", "True", "--auto-f0-adjust", "False",
+                                     "--semi-tone-shift", "0"});
+        }
     }
     const fs::path log_file = configuration_.capture_child_output ? temporary.path / "backend.log" : fs::path{};
     const auto error_detail = [&] {
@@ -108,21 +118,21 @@ Result VoiceConverter::convert(const Request& request) const {
     };
     int code;
     try {
-        code = detail::run_process(python, args, seed_root, configuration_.timeout, log_file);
+        code = detail::run_process(python, args, root, configuration_.timeout, log_file);
     } catch (const std::exception& ex) {
         throw std::runtime_error(std::string(ex.what()) + error_detail());
     }
-    if (code != 0) throw std::runtime_error("Seed-VC inference exited with code " + std::to_string(code) + error_detail());
+    if (code != 0) throw std::runtime_error("Inference exited with code " + std::to_string(code) + error_detail());
 
     fs::path produced;
     for (const auto& entry : fs::directory_iterator(temporary.path)) {
         if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-            if (!produced.empty()) throw std::runtime_error("Seed-VC produced multiple WAV files");
+            if (!produced.empty()) throw std::runtime_error("Inference produced multiple WAV files");
             produced = entry.path();
         }
     }
     if (produced.empty() || fs::file_size(produced) < 44 || !is_wav(produced))
-        throw std::runtime_error("Seed-VC did not produce a valid WAV output");
+        throw std::runtime_error("Inference did not produce a valid WAV output");
     const auto copy_mode = request.overwrite ? fs::copy_options::overwrite_existing : fs::copy_options::none;
     if (!fs::copy_file(produced, output, copy_mode))
         throw std::runtime_error("Cannot write output file (already exists?)");
