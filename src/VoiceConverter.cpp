@@ -70,7 +70,7 @@ Result VoiceConverter::convert(const Request& request) const {
     if (fs::weakly_canonical(output) == source || fs::weakly_canonical(output) == target)
         throw std::invalid_argument("Output cannot overwrite source/target audio");
     if (fs::exists(output) && !request.overwrite)
-        throw std::invalid_argument("Output already exists (pass --overwrite to replace)");
+        throw std::invalid_argument("Output already exists (use /overwrite on to replace)");
     if (!fs::is_directory(output.parent_path()))
         throw std::invalid_argument("Output parent directory does not exist");
 

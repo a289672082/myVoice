@@ -1,18 +1,22 @@
 # myVoice
 
-**C++17 (VS2022 / Windows / Linux) 零样本语音转换工程。** 输入源声音 `female.wav` 与目标人物参考声音 `male.wav`，输出同样内容、目标音色的 `result.wav`，**不需要训练 RVC、不需要麦克风**。
+C++17、Visual Studio 2022、Windows/Linux 的 **FTXUI 交互式语音转换控制台**。输入原始音频文件和目标声音参考文件，调用本地 [Seed-VC](https://github.com/Plachtaa/seed-vc) 模型生成目标音色音频。**不需要麦克风或提前训练 RVC**。
 
-当前实现将模型推理委托给本机安装的 [Seed-VC](https://github.com/Plachtaa/seed-vc)：**讲话用 Seed-VC V2**（`inference_v2.py`）；**歌声用 Seed-VC V1 F0 条件模型**（`inference.py`）。C++ 负责参数校验、原生子进程启动、超时、隔离临时目录、识别和校验输出音频。模型代码/权重不随仓库分发。
+- **FTXUI 控制台**：无参数运行 `myvoice_cli`，提供输入面板、消息记录、推理状态提示。
+- **统一 `/` 命令**：交互模式和批处理模式都使用 `/source`、`/target`、`/output` 等。
+- **自动提示/补全**：输入 `/` 显示候选命令；输入 `/eng` 提示 `/engine`；输入 `/engine s` 提示 `speech/singing`；路径参数支持文件名补全。**Tab** 填充第一个匹配项，**Enter** 执行，**↑/↓** 查看历史。
+- **异步调用**：FTXUI 的推理工作放在后台线程，执行期间界面仍可响应；内部仍由 C++ 创建本地 Python 子进程。
+- **引擎**：`speech` → Seed-VC V2，`singing` → Seed-VC V1 F0 条件模型，歌声默认不移调。
 
-> 注意：此版本是**文件离线推理**，不是实时麦克风、RVC 训练器或纯 C++ 神经网络。默认没有自定义自动音域映射；唱歌时关闭自动移调，保留原始旋律。这些限制是刻意保留的，避免把未经验证的高音修复功能当作已实现。
+**注意**：这个版本没有自动音域映射/失真修复模块，真实音质需要使用模型权重与音频进行验证。Seed-VC 推理依赖及权重需另外安装，未直接捆绑到本仓库。
 
-## 编译
+## 一、编译
 
-需要 CMake >= 3.24（预设文件要求）、C++17 编译器。仅对 Windows (Visual Studio 2022 x64) 和 Linux 提供支持，C++ 端**无需第三方库**。
+需要 CMake >= 3.24 和 C++17 编译器。FTXUI 版本固定为 **v7.0.3**（MIT），CMake 优先寻找本机安装版本，未找到时通过 FetchContent 下载；首次配置需要联网。也可设置 `FETCHCONTENT_SOURCE_DIR_FTXUI` 指向已下载的源码进行离线构建。
 
 ### Windows / VS2022
 
-安装带 **Desktop development with C++** 的 Visual Studio 2022 与 CMake。仓库可直接通过 VS2022 的 **Open Folder** 打开，选择 `windows-vs2022` 预设；也可以在 VS2022 Developer PowerShell 中运行：
+安装 VS2022 **使用 C++ 的桌面开发** 工作负载；用 Visual Studio **打开文件夹**选择 `windows-vs2022` 配置，或在 Developer PowerShell 执行：
 
 ```powershell
 cmake --preset windows-vs2022
@@ -20,7 +24,7 @@ cmake --build --preset windows-vs2022
 ctest --preset windows-vs2022
 ```
 
-生成的 CLI 在 `build/vs2022/Release/myvoice_cli.exe`。若希望生成独立 `.sln`，执行预设配置后打开 `build/vs2022/myVoice.sln`。
+生成 `build/vs2022/myVoice.sln` 和 `build/vs2022/Release/myvoice_cli.exe`。
 
 ### Linux
 
@@ -30,83 +34,105 @@ cmake --build --preset linux
 ctest --preset linux
 ```
 
-生成的 CLI 在 `build/linux/myvoice_cli`。
+生成 `build/linux/myvoice_cli`。
 
-## 安装真正的推理后端（首次配置）
+没有网络、只需要构建 C++ 核心和运行命令解析/模拟推理测试时，可额外设置 `-DMYVOICE_WITH_FTXUI=OFF`；此时不构建交互界面，但仍支持 `/` 命令批处理。
 
-1. 按 [Seed-VC 官方 README](https://github.com/Plachtaa/seed-vc) 克隆项目并配置 Python 3.10 + PyTorch（建议 NVIDIA GPU/CUDA）。项目原始仓库已归档，依赖版本需要与你的 Python/PyTorch 环境匹配。
-2. 在 Seed-VC 目录创建独立虚拟环境并按官方说明安装 `requirements.txt` 与预训练权重；第一次调用可能自动下载模型文件。Linux CUDA / Windows CUDA 的安装方式以官方说明为准。
-3. 将 `--seed-root` 指向 **包含 `inference.py` 和 `inference_v2.py` 的 Seed-VC 仓库根目录**，`--python` 指向该虚拟环境的 Python 可执行文件。
-4. 推荐先准备清晰、无伴奏、无削波的 WAV 源文件和目标参考录音；通常使用数秒到数十秒清晰参考声音更容易得到稳定结果。实际效果随模型、发音、音域与显卡而变化。
+## 二、安装 AI 模型
 
-### Windows 调用示例（直接使用文件，无麦克风）
+参照 [Seed-VC README](https://github.com/Plachtaa/seed-vc) 安装 Python 3.10、PyTorch 及 `requirements.txt`，准备模型权重（按官方说明下载或首次运行时获取）。这里需要将 `/seed-root` 设置为**包含** `inference.py` 和 `inference_v2.py` **的根目录**，`/python` 设置为对应虚拟环境解释器。建议有 NVIDIA CUDA 显卡。
+
+## 三、FTXUI 交互控制台
+
+直接运行：
+
+```powershell
+.\build\vs2022\Release\myvoice_cli.exe
+```
+
+进入界面后输入以下命令，**每行输入一条后回车**：
+
+```text
+/python "D:\Seed-VC\.venv\Scripts\python.exe"
+/seed-root "D:\Seed-VC"
+/source "D:\audio\female.wav"
+/target "D:\audio\male.wav"
+/output "D:\audio\converted.wav"
+/engine speech
+/steps 30
+/show
+/convert
+```
+
+如果转换高音歌声：使用 `/engine singing`。默认将歌声音高保持原样，不会强制把女声降一个八度。输出文件已存在时可先输入 `/overwrite on`（不会覆盖原始输入文件）；`/quit` 退出控制台。
+
+### 自动提示与快捷键
+
+| 输入/按键 | 行为 |
+| --- | --- |
+| `/` | 列出可用命令及说明 |
+| `/en` | 提示 `/engine` |
+| `/engine s` | 提示 `speech`、`singing` 中符合前缀的项 |
+| `/source D:/au` | 列出符合前缀的文件和目录（存在时） |
+| `Tab` | 自动填入当前第一个候选项 |
+| `Enter` | 执行命令 |
+| `↑`、`↓` | 浏览已输入的命令历史 |
+| `/help` | 查看全部命令和参数用法 |
+| `/show` | 显示当前设置 |
+
+有空格的路径必须用引号括起，如 `/source "D:\voice files\input.wav"`；Windows 路径反斜杠不会被作为转义字符剥离。
+
+## 四、自动化调用（无 FTXUI 交互）
+
+只要提供音频输入参数，CLI 就运行一次转换，并在完成后返回退出码。所有选项都使用 `/`，没有 `--` 前缀。
+
+**Windows PowerShell**：
 
 ```powershell
 .\build\vs2022\Release\myvoice_cli.exe `
-  --python "D:\Seed-VC\.venv\Scripts\python.exe" `
-  --seed-root "D:\Seed-VC" `
-  --source "D:\audio\female.wav" `
-  --target "D:\audio\male.wav" `
-  --output "D:\audio\result.wav" `
-  --engine speech
+  /python "D:\Seed-VC\.venv\Scripts\python.exe" `
+  /seed-root "D:\Seed-VC" `
+  /source "D:\audio\female.wav" `
+  /target "D:\audio\male.wav" `
+  /output "D:\audio\result.wav" `
+  /engine speech
 ```
 
-### Linux 调用示例
+**Linux**：
 
 ```bash
 ./build/linux/myvoice_cli \
-  --python /home/user/seed-vc/.venv/bin/python \
-  --seed-root /home/user/seed-vc \
-  --source /home/user/audio/female.wav \
-  --target /home/user/audio/male.wav \
-  --output /home/user/audio/result.wav \
-  --engine speech
+  /python /home/user/seed-vc/.venv/bin/python \
+  /seed-root /home/user/seed-vc \
+  /source /home/user/female.wav \
+  /target /home/user/male.wav \
+  /output /home/user/result.wav \
+  /engine singing /steps 40
 ```
 
-### 高音唱歌（保持原旋律）
+`/timeout 900` 设置超时秒数，`/overwrite on` 允许输出已存在时覆盖（保护输入文件）。`/help` 可在无模型环境下查询帮助；`/interactive` 可以显式进入 FTXUI。
 
-把 `--engine speech` 改为 `--engine singing`，即调用 Seed-VC V1 的 `--f0-condition True --auto-f0-adjust False --semi-tone-shift 0`。可追加 `--steps 40` 测试不同的推理质量与时间；高音失真**不会因更换模式而保证完全消失**。
-
-CLI 其他参数：`--timeout 900`（秒）、`--overwrite`（允许替换已存在的**输出**文件）、`--steps 30`（推理步数，1..200）。源文件和目标文件不能与输出路径相同。输出路径的父目录需提前创建。
-
-## C++ 接口示例
+## 五、C++ API
 
 ```cpp
 #include <myvoice/VoiceConverter.h>
-
 myvoice::Configuration config;
-config.python = "/path/to/seed-vc/.venv/bin/python";
-config.seed_vc_root = "/path/to/seed-vc";
-
+config.seed_vc_root = "D:/Seed-VC";
+config.python = "D:/Seed-VC/.venv/Scripts/python.exe";
 myvoice::Request req;
 req.source = "female.wav";
 req.target = "male.wav";
-req.output = "result.wav";
-req.mode = myvoice::Mode::Speech;  // or Singing
-
-const auto result = myvoice::VoiceConverter(config).convert(req);
+req.output = "converted.wav";
+req.mode = myvoice::Mode::Speech;
+auto result = myvoice::VoiceConverter(config).convert(req);
 ```
 
-链接 `myvoice::core`（CMake target），或者 `myvoice_core`。函数同步执行，异常使用标准 C++ 异常上报。应用若需异步 UI 可用线程池调度，不要在界面线程阻塞等待 Python。每次调用会启动一个 Python 子进程并重新加载模型，适合第一版文件推理；连续转换可后续增加常驻服务以降低延迟。
+核心接口独立于 FTXUI，可以通过 `myvoice::CommandShell` 在其他应用中复用 `/` 命令解析和自动提示。C++ 核心本身不依赖 FTXUI 或 PyTorch。
 
-## 工程目录
+## 六、测试和边界
 
-```text
-include/myvoice/VoiceConverter.h  公共 C++17 API
-src/VoiceConverter.cpp           音频文件校验/模型选择/产物管理
-src/Process.cpp                  Windows CreateProcessW / Linux fork+execvp
-apps/myvoice_cli.cpp             可直接运行的命令行 Demo
-tests/myvoice_tests.cpp          无 PyTorch 的模拟模型集成测试
-.github/workflows/ci.yml        VS2022 + Linux 自动编译与测试
-CMakePresets.json               VS2022 / Linux 项目配置
-```
+CI 在 Linux 和 Windows Server 2022 编译、运行纯 C++ 命令解析及自动补全测试、模拟 Python 后端测试（包括路径空格、超时、失败退出、输出保护）和 `/help` `/show` CLI 测试。**CI 不运行真实 Seed-VC 权重，不能由此认定音色转换效果已经验证。**
 
-## 测试说明与限制
+FTXUI 提供异步控制台，但 Python 子进程一次调用会重新加载模型，不属于实时麦克风变声。Windows 目前超时只保证终止直接 Python 子进程，不保证结束它衍生的所有进程；Linux 使用独立进程组终止。
 
-CI 使用模拟的 `inference.py` / `inference_v2.py`，检验跨平台启动、路径空格、讲话与歌声路由、错误退出、超时、禁止覆盖输入等逻辑。**CI 不下载模型、不实际测试声音相似度，也不意味着真实音频推理已经通过验证。** 必须在有合适 GPU 和真实模型的机器上手工试听普通讲话、高音讲话、假声与高音歌唱片段。
-
-Windows 的超时会终止直接子进程；Linux 使用独立进程组终止进程组。Windows 当前不承诺终止由 Python 额外派生的整个进程树。
-
-## 许可与合规
-
-本仓库 C++ 包装层使用 MIT 许可证；**Seed-VC 是独立的 GPL-3.0 项目，模型权重和其他依赖还有各自许可证。** 当前仓库不复制 Seed-VC 源码或预训练权重。若打包/再分发上游模型，请独立核对其许可证义务。请在获得目标声音所有者授权后进行声音克隆。
+仓库 C++ 代码使用 MIT。FTXUI 使用 MIT；Seed-VC 为独立 GPL-3.0 上游项目，模型和第三方依赖另有许可证。请遵守上游许可并获得目标声音所有者的授权。
