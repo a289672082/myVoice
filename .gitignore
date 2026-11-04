@@ -1,0 +1,14 @@
+/build/
+/out/
+/.vs/
+/.venv/
+__pycache__/
+*.pyc
+*.wav
+*.mp3
+*.flac
+*.pth
+*.pt
+*.safetensors
+/checkpoints/
+/third_party/seed-vc/
