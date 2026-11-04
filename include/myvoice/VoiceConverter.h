@@ -16,6 +16,7 @@ struct Configuration {
 #endif
     std::filesystem::path seed_vc_root;
     std::chrono::milliseconds timeout{900000};
+    bool capture_child_output = false;  // 用于 FTXUI: 防止 Python 输出打乱终端界面
 };
 
 struct Request {

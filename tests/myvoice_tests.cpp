@@ -55,6 +55,7 @@ parser.add_argument('--target', required=True)
 parser.add_argument('--output', required=True)
 args, _ = parser.parse_known_args()
 if 'fail' in pathlib.Path(args.source).name:
+    print('BACKEND_TEST_ERROR_MARKER', file=sys.stderr)
     sys.exit(13)
 if 'slow' in pathlib.Path(args.source).name:
     time.sleep(3)
@@ -93,6 +94,14 @@ with wave.open(str(out / 'converted.wav'), 'wb') as wav:
         req.source = ws.dir / "fail.wav";
         require(throws([&] { (void)converter.convert(req); }), "expected failure");
         require(!fs::exists(req.output), "unexpected output after failure");
+        cfg.capture_child_output = true;
+        myvoice::VoiceConverter quiet_converter(cfg);
+        bool saw_backend_log = false;
+        try { (void)quiet_converter.convert(req); }
+        catch (const std::exception& e) {
+            saw_backend_log = std::string(e.what()).find("BACKEND_TEST_ERROR_MARKER") != std::string::npos;
+        }
+        require(saw_backend_log, "quiet mode must capture Python stderr in failure");
         req.output = ws.dir / "timeout.wav";
         req.source = ws.dir / "slow.wav";
         cfg.timeout = std::chrono::milliseconds(100);

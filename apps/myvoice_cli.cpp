@@ -1,55 +1,62 @@
+#include "myvoice/CommandShell.h"
 #include "myvoice/VoiceConverter.h"
-
-#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
+#ifdef MYVOICE_WITH_FTXUI
+int run_tui();
+#endif
 namespace {
-namespace fs = std::filesystem;
-
-void usage() {
-    std::cout
-        << "myvoice_cli --seed-root <Seed-VC path> --source <input.wav> --target <reference.wav> "
-           "--output <result.wav> [options]\n"
-        << "  --engine speech|singing  Default: speech (Seed-VC V2)\n"
-        << "  --python <executable>     Python interpreter in the Seed-VC virtual environment\n"
-        << "  --steps <1..200>         Diffusion steps, default: 30\n"
-        << "  --timeout <seconds>      Process deadline, default: 900\n"
-        << "  --overwrite              Replace existing output (never replaces inputs)\n"
-        << "  --help                   Show this help\n";
+#ifdef _WIN32
+// wmain 收到 UTF-16；转换为 UTF-8 供统一 / 命令解析，路径在 Shell 中恢复为 Unicode。
+std::string utf8(const wchar_t* value) {
+    const int len = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) throw std::runtime_error("Cannot convert command-line argument to UTF-8");
+    std::string bytes(static_cast<std::size_t>(len), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value, -1, bytes.data(), len, nullptr, nullptr);
+    bytes.pop_back();
+    return bytes;
 }
-
-int run(const std::vector<fs::path>& args) {
-    if (args.empty()) { usage(); return 2; }
-    myvoice::Configuration configuration;
-    myvoice::Request request;
-    for (std::size_t i = 0; i < args.size(); ++i) {
-        const auto key = args[i].string();
-        if (key == "--help" || key == "-h") { usage(); return 0; }
-        if (key == "--overwrite") { request.overwrite = true; continue; }
-        if (i + 1 >= args.size()) throw std::invalid_argument("Missing value for " + key);
-        const auto value = args[++i];
-        if (key == "--seed-root") configuration.seed_vc_root = value;
-        else if (key == "--source") request.source = value;
-        else if (key == "--target") request.target = value;
-        else if (key == "--output") request.output = value;
-        else if (key == "--python") configuration.python = value;
-        else if (key == "--steps") request.diffusion_steps = std::stoi(value.string());
-        else if (key == "--timeout") {
-            const int seconds = std::stoi(value.string());
-            if (seconds <= 0 || seconds > 86400) throw std::invalid_argument("timeout must be 1..86400 seconds");
-            configuration.timeout = std::chrono::seconds(seconds);
-        } else if (key == "--engine") {
-            if (value == fs::path("speech")) request.mode = myvoice::Mode::Speech;
-            else if (value == fs::path("singing")) request.mode = myvoice::Mode::Singing;
-            else throw std::invalid_argument("engine must be speech or singing");
-        } else throw std::invalid_argument("Unknown option: " + key);
+#endif
+int run(const std::vector<std::string>& args) {
+    if (args.empty() || (args.size() == 1 && args.front() == "/interactive")) {
+#ifdef MYVOICE_WITH_FTXUI
+        return run_tui();
+#else
+        std::cout << "FTXUI disabled in this build; use /help for batch mode.\n";
+        return 2;
+#endif
     }
-    const auto result = myvoice::VoiceConverter(std::move(configuration)).convert(request);
+    myvoice::CommandShell shell;
+    bool request_conversion = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const auto& key = args[i];
+        if (key == "/help" || key == "/show" || key == "/convert") {
+            const auto result = shell.execute(key);
+            if (!result.success) throw std::invalid_argument(result.message);
+            if (key == "/convert") request_conversion = true;
+            else std::cout << result.message << '\n';
+            continue;
+        }
+        if (key == "/quit" || key == "/interactive")
+            throw std::invalid_argument(key + " is only supported in interactive mode");
+        if (key.empty() || key.front() != '/')
+            throw std::invalid_argument("Expected /option; use /help");
+        if (i + 1 >= args.size()) throw std::invalid_argument("Missing value after " + key);
+        const auto result = shell.set_option(key, args[++i]);
+        if (!result.success) throw std::invalid_argument(result.message);
+        if (key == "/source" || key == "/target" || key == "/output")
+            request_conversion = true;
+    }
+    if (!request_conversion) return 0;
+    const auto result = myvoice::VoiceConverter(shell.configuration).convert(shell.request);
     std::cout << "Conversion successful: " << result.output.string() << " ("
               << result.elapsed.count() << " ms)\n";
     return 0;
@@ -62,11 +69,17 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
     try {
-        std::vector<fs::path> args;
-        for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+        std::vector<std::string> args;
+        for (int i = 1; i < argc; ++i) {
+#ifdef _WIN32
+            args.push_back(utf8(argv[i]));
+#else
+            args.emplace_back(argv[i]);
+#endif
+        }
         return run(args);
-    } catch (const std::exception& ex) {
-        std::cerr << "myVoice error: " << ex.what() << '\n';
+    } catch (const std::exception& e) {
+        std::cerr << "myVoice error: " << e.what() << '\n';
         return 1;
     }
 }

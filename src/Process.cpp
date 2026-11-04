@@ -9,6 +9,7 @@
 #include <Windows.h>
 #else
 #include <cerrno>
+#include <fcntl.h>
 #include <csignal>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -51,16 +52,33 @@ struct Handle {
 int run_process(const std::filesystem::path& executable,
                 const std::vector<std::filesystem::path>& args,
                 const std::filesystem::path& working_directory,
-                std::chrono::milliseconds timeout) {
+                std::chrono::milliseconds timeout,
+                const std::filesystem::path& log_file) {
     std::wstring command = quote_windows(executable.wstring());
     for (const auto& a : args) command += L" " + quote_windows(a.wstring());
     std::vector<wchar_t> mutable_command(command.begin(), command.end());
     mutable_command.push_back(L'\0');
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
+    HANDLE inherited_log = nullptr;
+    Handle output;
+    if (!log_file.empty()) {
+        SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+        output.h = CreateFileW(log_file.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                               &attributes, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (output.h == INVALID_HANDLE_VALUE) {
+            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
+                                    "Cannot create process log");
+        }
+        inherited_log = output.h;
+        startup.dwFlags |= STARTF_USESTDHANDLES;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startup.hStdOutput = inherited_log;
+        startup.hStdError = inherited_log;
+    }
     PROCESS_INFORMATION process{};
     const std::wstring cwd = working_directory.wstring();
-    if (!CreateProcessW(nullptr, mutable_command.data(), nullptr, nullptr, FALSE,
+    if (!CreateProcessW(nullptr, mutable_command.data(), nullptr, nullptr, !log_file.empty(),
                         CREATE_NO_WINDOW, nullptr, cwd.c_str(), &startup, &process)) {
         throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
                                 "CreateProcessW failed (check Python executable)");
@@ -89,7 +107,8 @@ int run_process(const std::filesystem::path& executable,
 int run_process(const std::filesystem::path& executable,
                 const std::vector<std::filesystem::path>& args,
                 const std::filesystem::path& working_directory,
-                std::chrono::milliseconds timeout) {
+                std::chrono::milliseconds timeout,
+                const std::filesystem::path& log_file) {
     const auto exec = executable.string();
     std::vector<std::string> strings;
     strings.reserve(args.size() + 1);
@@ -105,6 +124,12 @@ int run_process(const std::filesystem::path& executable,
         // 独立进程组，超时时能连同子进程一起清理。
         setpgid(0, 0);
         if (chdir(working_directory.c_str()) != 0) _exit(126);
+        if (!log_file.empty()) {
+            const int out = open(log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            if (out < 0) _exit(126);
+            if (dup2(out, STDOUT_FILENO) < 0 || dup2(out, STDERR_FILENO) < 0) _exit(126);
+            close(out);
+        }
         execvp(exec.c_str(), argv.data());
         _exit(127);
     }

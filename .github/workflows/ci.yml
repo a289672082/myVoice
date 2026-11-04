@@ -1,4 +1,4 @@
-name: C++ Build and Mock Integration
+name: VS2022/Linux FTXUI Build and Mock Tests
 on:
   push:
   pull_request:
