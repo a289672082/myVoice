@@ -47,6 +47,20 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
 #ifdef MYVOICE_TRAIN_BRIDGE_SCRIPT
     if (script.empty()) script = fs::u8path(MYVOICE_TRAIN_BRIDGE_SCRIPT);
 #endif
+    // VS2022 原生 .sln 无 CMake 路径宏；在项目目录或工作目录上溯查找本仓库的桥接脚本。
+    // /train-script 始终优先，避免从其他项目目录误加载外部代码。
+    if (script.empty()) {
+        fs::path parent = fs::current_path();
+        for (int depth = 0; depth < 8; ++depth) {
+            const fs::path candidate = parent / "scripts" / "rvc_train.py";
+            if (fs::is_regular_file(candidate)) {
+                script = candidate;
+                break;
+            }
+            if (parent == parent.parent_path()) break;
+            parent = parent.parent_path();
+        }
+    }
     if (script.empty() || !fs::is_regular_file(script))
         throw std::invalid_argument("Missing RVC training bridge (scripts/rvc_train.py)");
     script = fs::canonical(script);

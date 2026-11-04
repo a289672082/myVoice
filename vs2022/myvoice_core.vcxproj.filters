@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files"><UniqueIdentifier>{4C3EAD14-5F73-4D49-82BD-BA932F6F5A01}</UniqueIdentifier></Filter>
+    <Filter Include="Header Files"><UniqueIdentifier>{D4D1C36E-4BEF-43E5-A122-BB39D904D032}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\Process.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\src\CommandShell.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\src\VoiceConverter.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\src\VoiceTrainer.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="..\include\myvoice\CommandShell.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\include\myvoice\VoiceConverter.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\include\myvoice\VoiceTrainer.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\src\Process.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+</Project>
