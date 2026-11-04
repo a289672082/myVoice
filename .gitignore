@@ -11,4 +11,20 @@ __pycache__/
 *.pt
 *.safetensors
 /checkpoints/
-/third_party/seed-vc/
+
+# Bundled engines are tracked. Ignore only user-generated data and downloaded model weights.
+/third_party/rvc/logs/
+/third_party/rvc/assets/weights/
+/third_party/rvc/assets/indices/
+/third_party/rvc/assets/hubert_base/
+/third_party/rvc/assets/rmvpe/
+/third_party/rvc/assets/pretrained/
+/third_party/rvc/assets/pretrained_v2/
+/third_party/rvc/.model-downloads/
+/third_party/seed-vc/checkpoints/
+/third_party/seed-vc/logs/
+/third_party/seed-vc/output/
+/third_party/seed-vc/reconstructed/
+/third_party/seed-vc/.cache/
+*.index
+*.npy

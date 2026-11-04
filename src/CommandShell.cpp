@@ -1,4 +1,5 @@
 #include "myvoice/CommandShell.h"
+#include "myvoice/EnginePaths.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -233,7 +234,8 @@ CommandResult CommandShell::execute(const std::string& line) {
             if (normalized == "/convert") return {CommandAction::Convert, "Converting with " + menu_name() + "...", true};
             if (normalized == "/train") return {CommandAction::Train, "Training RVC V2...", true};
             if (normalized == "/train-log") {
-                const fs::path log_path = training_configuration.rvc_root / "logs" /
+                const fs::path log_path = resolve_engine_root(
+                    training_configuration.rvc_root, "rvc", "train/train.py") / "logs" /
                                           training.name / "myvoice_train.log";
                 std::ifstream input(log_path, std::ios::binary);
                 if (!input) return {CommandAction::None, "No training log yet: " + as_string(log_path), false};
@@ -278,11 +280,11 @@ std::string CommandShell::summary() const {
       << "\nTimeout: " << cfg.timeout.count() / 1000 << "s"
       << "\nOverwrite: " << (req.overwrite ? "on" : "off");
     if (menu_ == ConsoleMenu::SeedVC) {
-        o << "\nSeed-VC root: " << as_string(cfg.seed_vc_root)
+        o << "\nSeed-VC root: " << (cfg.seed_vc_root.empty() ? "third_party/seed-vc (bundled)" : as_string(cfg.seed_vc_root))
           << "\nTarget reference: " << as_string(req.target)
           << "\nDiffusion steps: " << req.diffusion_steps;
     } else {
-        o << "\nRVC root: " << as_string(training_configuration.rvc_root)
+        o << "\nRVC root: " << (training_configuration.rvc_root.empty() ? "third_party/rvc (bundled)" : as_string(training_configuration.rvc_root))
           << "\nTrained model: " << as_string(req.trained_model)
           << "\nDataset: " << as_string(training.dataset)
           << "\nTrain name: " << training.name

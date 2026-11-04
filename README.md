@@ -1,8 +1,21 @@
 # myVoice
 
+Windows / Linux 跨平台 C++17 + FTXUI 语音转换程序，附带可直接打开的 Visual Studio 2022 `myVoice.sln`。
+
+**FTXUI、RVC、Seed-VC 的源码都已直接检入本仓库**，位于 `third_party/`，不是 Git 子模块，不需要 CMake/运行时从 GitHub 下载引擎源码。FTXUI 为 MIT；RVC 为 MIT；Seed-VC 为 GPL-3.0，详见各自 `LICENSE`。请分别遵守对应许可。
+
+**重要限制：** 此次内置的是源码而不是完整 AI 离线运行环境。PyTorch、CUDA、Python 第三方包、HuBERT/RMVPE、Seed-VC 所需检查点等大型预训练模型权重仍需要单独准备；因此 **C++ 编译离线可行，首次模型运行不保证离线**。不包含第三方示例歌曲或人物录音。
+
+| 引擎 | 默认源码目录 | 功能 |
+|---|---|---|
+| FTXUI | `third_party/ftxui/` | TUI 命令控制台 |
+| RVC | `third_party/rvc/` | 已训练模型推理、RVC V2 训练 |
+| Seed-VC | `third_party/seed-vc/` | V2 讲话、V1 歌声零样本转换 |
+
+两个引擎使用自己的 Python 环境和权重文件；`/rvc-root`、`/seed-root` 是可选覆盖参数，不再要求单独克隆源码仓库。使用 `/show` 查看当前引擎参数。训练出来的 RVC 模型不能直接由 Seed-VC 加载。
+
 Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音色训练** 项目。可在 **Visual Studio 2022** 中使用 CMake 工程（自动生成 `.sln`）。命令统一以 `/` 开头。**先输入 `/Seed-VC` 或 `/RVC` 进入引擎专属子菜单**，再执行该引擎的命令；支持实时命令提示、Tab 补全、文件路径补全和历史命令。
 
-> **FTXUI v7.0.3 全部所需源码已内置到 `third_party/ftxui/`**（MIT，保留原 LICENSE）。CMake **只从本地源码编译**，不使用 `FetchContent`、Git 子模块或 `find_package(ftxui)`，**配置和 C++ 构建无需联网**。AI 模型、PyTorch、CUDA、RVC/Seed-VC Python 仓库和权重不在此仓库内，需要单独安装。
 
 ## 功能
 
@@ -18,7 +31,7 @@ Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音�
 | 高音失真自动修复 / 自动音域映射 | **未实现**，不能保证消除女声高音转男声失真 |
 | 实时麦克风、GUI 训练参数面板、纯 C++ 模型训练 | **未实现** |
 
-训练流水线实际调用你独立安装的 RVC 官方 Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
+训练流水线实际调用仓库内的 RVC Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
 
 ## VS2022 原生解决方案（可直接双击）
   
@@ -52,14 +65,13 @@ ctest --preset linux
 
 ## 二、训练男声音色（RVC V2）
 
-1. 另行安装 [RVC 官方源码](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) 的 Python 环境及依赖（推荐可用 CUDA GPU），取得 `assets/hubert_base/`、`assets/rmvpe/rmvpe.pt`、`assets/pretrained_v2/f0G48k.pth`、`f0D48k.pth` 等**官方**预训练权重。训练桥接脚本只适配仓库中具有 `train/preprocess.py`、`train/dataset/extract_f0.py`、`train/dataset/extract_hubert_feature.py`、`train/train.py`、`train/train_index.py` 的版本。
+1. 使用内置的 `third_party/rvc` 源码，单独安装 RVC 的 Python 环境及依赖（推荐可用 CUDA GPU），取得 `assets/hubert_base/`、`assets/rmvpe/rmvpe.pt`、`assets/pretrained_v2/f0G48k.pth`、`f0D48k.pth` 等**官方**预训练权重。训练桥接脚本只适配仓库中具有 `train/preprocess.py`、`train/dataset/extract_f0.py`、`train/dataset/extract_hubert_feature.py`、`train/train.py`、`train/train_index.py` 的版本。
 2. 把得到授权的目标男声录音（建议有正常讲话和真实高音/唱歌内容）放到独立目录，比如 `D:\voice_data\male`。尽量避免音乐伴奏、噪声、明显削波和 TTS 合成伪影。训练阶段使用的是**目标男声**，不是要转换的女声音频。
 3. 打开 FTXUI，先进入 `/RVC`，再输入训练参数：
 
 ```text
 /RVC
-/python "D:\RVC\.venv\Scripts\python.exe"
-/rvc-root "D:\RVC"
+/python "D:\myVoice\.venv-rvc\Scripts\python.exe"
 /dataset "D:\voice_data\male"
 /train-name male_v1
 /epochs 200
@@ -73,7 +85,7 @@ ctest --preset linux
 /train
 ```
 
-训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\RVC\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\RVC\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\RVC\logs\male_v1\`，索引可链接到 `assets/indices`。
+训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1\`，索引可链接到 `assets/indices`。
 
 - `epochs`：1..10000，实际训练效果需对照评估检查点；不是越大越好。
 - `batch`：1..128，显存不足时可降低；`/device cpu` 可用于排查/测试，但训练极慢。
@@ -88,10 +100,9 @@ ctest --preset linux
 
 ```text
 /RVC
-/python "D:\RVC\.venv\Scripts\python.exe"
-/rvc-root "D:\RVC"
+/python "D:\myVoice\.venv-rvc\Scripts\python.exe"
 /engine rvc
-/model "D:\RVC\assets\weights\male_v1.pth"
+/model "D:\myVoice\third_party\rvc\assets\weights\male_v1.pth"
 /source "D:\audio\female.wav"
 /output "D:\audio\result.wav"
 /convert
@@ -101,12 +112,11 @@ RVC 推理默认 RMVPE、`pitch=0`、`index-rate=0`，**不要求手工操作移
 
 ## 四、免训练的 Seed-VC 转换
 
-按 [Seed-VC 官方仓库](https://github.com/Plachtaa/seed-vc) 安装相应 Python 环境和权重，并进入 Seed-VC 子菜单：
+使用内置的 `third_party/seed-vc` 源码，为它准备 Python 环境和相应权重，然后进入 Seed-VC 子菜单：
 
 ```text
 /Seed-VC
-/python "D:\Seed-VC\.venv\Scripts\python.exe"
-/seed-root "D:\Seed-VC"
+/python "D:\myVoice\.venv-seed\Scripts\python.exe"
 /source "D:\audio\female.wav"
 /target "D:\audio\male_reference.wav"
 /output "D:\audio\result.wav"
@@ -151,14 +161,12 @@ myVoice / RVC
 ```powershell
 # RVC 训练
 .\build\vs2022\Release\myvoice_cli.exe `
-  /RVC /python "D:\RVC\.venv\Scripts\python.exe" `
-  /rvc-root "D:\RVC" /dataset "D:\voice_data\male" `
+  /RVC /python "D:\myVoice\.venv-rvc\Scripts\python.exe" `
   /train-name male_v1 /epochs 200 /batch 4 /train
 
 # Seed-VC 文件转换
 .\build\vs2022\Release\myvoice_cli.exe `
-  /Seed-VC /python "D:\Seed-VC\.venv\Scripts\python.exe" `
-  /seed-root "D:\Seed-VC" /source "D:\audio\female.wav" `
+  /Seed-VC /python "D:\myVoice\.venv-seed\Scripts\python.exe" `
   /target "D:\audio\male.wav" /output "D:\audio\result.wav" /convert
 ```
 
@@ -195,3 +203,25 @@ auto output = myvoice::VoiceConverter(cfg).convert(req);
 ## 安全与许可证
 
 仓库自身许可证见 `LICENSE`；FTXUI 原许可证见 `third_party/ftxui/LICENSE`。RVC、Seed-VC、模型权重、数据集和第三方预训练模型遵循各自许可证；用户应拥有目标声音的合法使用授权。此程序不提供或下载未经授权的真人声音数据。
+
+### Python 环境示例（Windows）
+
+在仓库根目录执行（需要预先安装对应版本的 Python；按 GPU/CUDA 环境选用正确的 PyTorch 依赖）：
+
+```powershell
+# Seed-VC 推荐 Python 3.10（源码在本地）
+py -3.10 -m venv .venv-seed
+.\.venv-seed\Scripts\python.exe -m pip install -r third_party/seed-vc/requirements.txt
+
+# RVC 当前仓库提供 Python 3.12 的依赖清单，例如 CPU 版本
+py -3.12 -m venv .venv-rvc
+.\.venv-rvc\Scripts\python.exe -m pip install -r third_party/rvc/requirments_cpu_py312.txt
+```
+
+GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt` 或 `requirments_cu128_py312.txt`，不可混装。RVC 训练还需 `assets/pretrained_v2/` 等模型资源；Seed-VC 初次推理也可能通过 Hugging Face 下载对应权重。本项目只内置引擎源码，**不会自动配置 Python 或下载全部模型权重**。 
+
+## 内置引擎来源与离线依赖
+
+详见 [third_party/ENGINES.md](third_party/ENGINES.md)。默认 Python 可执行文件仍是 `python`（Windows）或 `python3`（Linux）；不同引擎若装在不同 Python 虚拟环境，可进入对应子菜单后使用 `/python <可执行文件>` 独立配置。
+
+**迁移提示：** 老版本的 `/rvc-root` / `/seed-root` 配置仍有效，显式指定时优先于内置路径。现在不设置它们也可以调用源码，但启动训练或转换前依然必须配置对应 Python 依赖、模型权重和授权音频数据。

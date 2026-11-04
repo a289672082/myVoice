@@ -81,6 +81,7 @@
     <ClCompile Include="..\src\VoiceTrainer.cpp" />
     <ClInclude Include="..\include\myvoice\CommandShell.h" />
     <ClInclude Include="..\include\myvoice\VoiceConverter.h" />
+    <ClInclude Include="..\include\myvoice\EnginePaths.h" />
     <ClInclude Include="..\include\myvoice\VoiceTrainer.h" />
     <ClInclude Include="..\src\Process.h" />
   </ItemGroup>

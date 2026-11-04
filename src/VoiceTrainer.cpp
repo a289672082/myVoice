@@ -1,4 +1,5 @@
 #include "myvoice/VoiceTrainer.h"
+#include "myvoice/EnginePaths.h"
 #include "Process.h"
 #include <algorithm>
 #include <chrono>
@@ -37,11 +38,13 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
         throw std::invalid_argument("Invalid training options; see /help");
     if (configuration_.timeout <= std::chrono::milliseconds::zero())
         throw std::invalid_argument("Training timeout must be positive");
-    if (!fs::is_directory(configuration_.rvc_root))
+    const fs::path selected_root = resolve_engine_root(
+        configuration_.rvc_root, "rvc", "train/train.py");
+    if (!fs::is_directory(selected_root))
         throw std::invalid_argument("RVC root is not a directory; use /rvc-root");
     if (!fs::is_directory(req.dataset))
         throw std::invalid_argument("Training dataset is not a directory; use /dataset");
-    const fs::path root = fs::canonical(configuration_.rvc_root);
+    const fs::path root = fs::canonical(selected_root);
     const fs::path dataset = fs::canonical(req.dataset);
     fs::path script = configuration_.bridge_script;
 #ifdef MYVOICE_TRAIN_BRIDGE_SCRIPT
