@@ -1,6 +1,6 @@
 # myVoice
 
-Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音色训练** 项目。可在 **Visual Studio 2022** 中使用 CMake 工程（自动生成 `.sln`）。命令统一以 `/` 开头，支持实时命令提示、Tab 补全、文件路径补全和历史命令。
+Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音色训练** 项目。可在 **Visual Studio 2022** 中使用 CMake 工程（自动生成 `.sln`）。命令统一以 `/` 开头。**先输入 `/Seed-VC` 或 `/RVC` 进入引擎专属子菜单**，再执行该引擎的命令；支持实时命令提示、Tab 补全、文件路径补全和历史命令。
 
 > **FTXUI v7.0.3 全部所需源码已内置到 `third_party/ftxui/`**（MIT，保留原 LICENSE）。CMake **只从本地源码编译**，不使用 `FetchContent`、Git 子模块或 `find_package(ftxui)`，**配置和 C++ 构建无需联网**。AI 模型、PyTorch、CUDA、RVC/Seed-VC Python 仓库和权重不在此仓库内，需要单独安装。
 
@@ -8,7 +8,7 @@ Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音�
 
 | 功能 | 当前实现 |
 | --- | --- |
-| FTXUI 控制台、`/` 命令、Tab 自动补全 | ✅ |
+| FTXUI 控制台、`/Seed-VC` 与 `/RVC` 子菜单、Tab 自动补全 | ✅ |
 | Windows / VS2022、Linux 编译 | ✅ CMake |
 | `/engine speech` | Seed-VC V2 零样本普通语音转换 |
 | `/engine singing` | Seed-VC V1 带 F0 条件歌声转换（默认不移调） |
@@ -46,9 +46,10 @@ ctest --preset linux
 
 1. 另行安装 [RVC 官方源码](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) 的 Python 环境及依赖（推荐可用 CUDA GPU），取得 `assets/hubert_base/`、`assets/rmvpe/rmvpe.pt`、`assets/pretrained_v2/f0G48k.pth`、`f0D48k.pth` 等**官方**预训练权重。训练桥接脚本只适配仓库中具有 `train/preprocess.py`、`train/dataset/extract_f0.py`、`train/dataset/extract_hubert_feature.py`、`train/train.py`、`train/train_index.py` 的版本。
 2. 把得到授权的目标男声录音（建议有正常讲话和真实高音/唱歌内容）放到独立目录，比如 `D:\voice_data\male`。尽量避免音乐伴奏、噪声、明显削波和 TTS 合成伪影。训练阶段使用的是**目标男声**，不是要转换的女声音频。
-3. 打开 FTXUI，依次输入：
+3. 打开 FTXUI，先进入 `/RVC`，再输入训练参数：
 
 ```text
+/RVC
 /python "D:\RVC\.venv\Scripts\python.exe"
 /rvc-root "D:\RVC"
 /dataset "D:\voice_data\male"
@@ -75,9 +76,10 @@ ctest --preset linux
 
 ## 三、使用训练好的 RVC 音色转换
 
-训练完成并取得 `.pth` 文件后：
+训练完成并取得 `.pth` 文件后，进入 RVC 子菜单：
 
 ```text
+/RVC
 /python "D:\RVC\.venv\Scripts\python.exe"
 /rvc-root "D:\RVC"
 /engine rvc
@@ -91,9 +93,10 @@ RVC 推理默认 RMVPE、`pitch=0`、`index-rate=0`，**不要求手工操作移
 
 ## 四、免训练的 Seed-VC 转换
 
-按 [Seed-VC 官方仓库](https://github.com/Plachtaa/seed-vc) 安装相应 Python 环境和权重：
+按 [Seed-VC 官方仓库](https://github.com/Plachtaa/seed-vc) 安装相应 Python 环境和权重，并进入 Seed-VC 子菜单：
 
 ```text
+/Seed-VC
 /python "D:\Seed-VC\.venv\Scripts\python.exe"
 /seed-root "D:\Seed-VC"
 /source "D:\audio\female.wav"
@@ -105,25 +108,53 @@ RVC 推理默认 RMVPE、`pitch=0`、`index-rate=0`，**不要求手工操作移
 
 唱歌时用 `/engine singing`，官方 F0 条件模型默认不移调，避免影响原始伴奏调性。
 
-## 五、`/` 命令和自动提示
+## 五、分层子菜单、自动提示与批处理
 
-输入 `/` 显示可用命令；输入 `/tra` 会列出 `/train`、`/train-name`、`/train-timeout`、`/train-log` 等候选。输入 `/engine r` 时提示 `/engine rvc`。输入 `/source D:/au` 会根据本地文件系统提示路径；**Tab** 补全、**Enter** 执行、**↑↓** 查阅历史。路径有空格时加引号；Windows 反斜杠不会被丢弃。
+**主菜单**：输入 `/` 只显示 `/Seed-VC`、`/RVC`、`/help`、`/show` 和 `/quit`。选择引擎后，页眉切换为 `myVoice / Seed-VC` 或 `myVoice / RVC`，候选命令只显示当前引擎支持的操作：
 
-使用 `/help` 查看全部命令，`/show` 查看转换和训练参数，`/quit` 退出（有运行中任务时需先完成）。
+```text
+myVoice / Main
+> /Seed-VC
+myVoice / Seed-VC
+> /engine singing
+> /source female.wav
+> /target male.wav
+> /convert
+> /back
+myVoice / Main
+> /RVC
+myVoice / RVC
+> /dataset male_dataset
+> /epochs 200
+> /train
+> /back
+```
+
+- **Seed-VC 子菜单**：`/source`、`/target`、`/output`、`/engine speech|singing`、`/steps`、`/convert`、`/seed-root`、`/python`、`/timeout`、`/overwrite`。仅支持零样本推理；目前**不支持 Seed-VC 微调**。
+- **RVC 子菜单**：`/source`、`/output`、`/model`、`/convert`，以及 `/dataset`、`/train-name`、`/epochs`、`/batch`、`/save-every`、`/workers`、`/device`、`/gpu`、`/index`、`/train-timeout`、`/train-script`、`/train-log`、`/train`，另有 `/rvc-root`、`/python`、`/timeout`、`/overwrite`。
+- **通用命令**：每一层均支持 `/help`、`/show`、`/quit`；引擎子菜单支持 `/back` 返回主菜单。主菜单不允许直接 `/convert` 或 `/train`，Seed-VC 不允许 `/train`，RVC 不允许 `/engine singing` 和 `/target`。避免意外混用引擎和权重。
+- **分别记忆配置**：Seed-VC、RVC 的 Python 解释器、输入源音频和输出路径相互隔离，切换引擎后原有设置保留。RVC 训练与 RVC 推理共享 RVC Python 路径和源码目录。
+- **自动补全**：输入 `/` 查看当前层级命令，输入 `/eng`（Seed-VC 内）或 `/tr`（RVC 内）显示匹配候选；Tab 补全，Enter 执行，↑↓ 查看历史命令。带空格的路径请加引号。`/Seed-VC` 与 `/RVC` 不区分 ASCII 大小写。
 
 ### 无界面批处理
 
-无需进入 TUI，直接把 `/` 参数传给可执行文件，并以 `/train` 或 `/convert` 作为动作：
+命令行也必须先选择子菜单，再传入参数，最后显式写 `/convert` 或 `/train`：
 
 ```powershell
+# RVC 训练
 .\build\vs2022\Release\myvoice_cli.exe `
-  /python "D:\RVC\.venv\Scripts\python.exe" `
-  /rvc-root "D:\RVC" `
-  /dataset "D:\voice_data\male" `
+  /RVC /python "D:\RVC\.venv\Scripts\python.exe" `
+  /rvc-root "D:\RVC" /dataset "D:\voice_data\male" `
   /train-name male_v1 /epochs 200 /batch 4 /train
+
+# Seed-VC 文件转换
+.\build\vs2022\Release\myvoice_cli.exe `
+  /Seed-VC /python "D:\Seed-VC\.venv\Scripts\python.exe" `
+  /seed-root "D:\Seed-VC" /source "D:\audio\female.wav" `
+  /target "D:\audio\male.wav" /output "D:\audio\result.wav" /convert
 ```
 
-Linux 也可使用相同 `/` 命令。脚本执行失败会输出非零退出码，训练细节保存在日志中。
+脚本不会自动运行转换：`/convert` 或 `/train` 必须位于最后一个参数；否则只设置并显示选项。`/help` 显示当前菜单帮助。例如 `myvoice_cli /RVC /help`。失败时输出非零退出码。
 
 ## 六、C++ API 及结构
 

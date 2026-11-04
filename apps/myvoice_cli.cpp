@@ -37,14 +37,31 @@ int run(const std::vector<std::string>& args) {
     myvoice::CommandShell shell;
     bool request_conversion = false;
     bool request_training = false;
+    myvoice::Configuration convert_configuration;
+    myvoice::Request convert_request;
+    myvoice::TrainingConfiguration train_configuration;
+    myvoice::TrainingRequest train_request;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& key = args[i];
-        if (key == "/help" || key == "/show" || key == "/convert" || key == "/train" || key == "/train-log") {
+        const bool is_action = key == "/convert" || key == "/train";
+        if (request_conversion || request_training)
+            throw std::invalid_argument("/convert or /train must be the final argument");
+        if (key == "/Seed-VC" || key == "/seed-vc" || key == "/RVC" || key == "/rvc" ||
+            key == "/back" || key == "/help" || key == "/show" ||
+            key == "/convert" || key == "/train" || key == "/train-log") {
             const auto result = shell.execute(key);
             if (!result.success) throw std::invalid_argument(result.message);
-            if (key == "/convert") request_conversion = true;
-            else if (key == "/train") request_training = true;
-            else std::cout << result.message << '\n';
+            if (is_action) {
+                if (key == "/convert") {
+                    request_conversion = true;
+                    convert_configuration = shell.conversion_configuration();
+                    convert_request = shell.conversion_request();
+                } else {
+                    request_training = true;
+                    train_configuration = shell.training_configuration;
+                    train_request = shell.training;
+                }
+            } else if (!result.message.empty()) std::cout << result.message << '\n';
             continue;
         }
         if (key == "/quit" || key == "/interactive")
@@ -54,21 +71,18 @@ int run(const std::vector<std::string>& args) {
         if (i + 1 >= args.size()) throw std::invalid_argument("Missing value after " + key);
         const auto result = shell.set_option(key, args[++i]);
         if (!result.success) throw std::invalid_argument(result.message);
-        if (key == "/source" || key == "/target" || key == "/output" || key == "/model")
-            request_conversion = true;
     }
-    if (request_training && request_conversion)
-        throw std::invalid_argument("Specify /train or /convert, not both");
     if (request_training) {
-        const auto result = myvoice::VoiceTrainer(shell.training_configuration).train(shell.training);
+        const auto result = myvoice::VoiceTrainer(train_configuration).train(train_request);
         std::cout << "Training successful: " << result.experiment_dir.string()
                   << "\nLog: " << result.log_file.string() << "\n";
         return 0;
     }
-    if (!request_conversion) return 0;
-    const auto result = myvoice::VoiceConverter(shell.configuration).convert(shell.request);
-    std::cout << "Conversion successful: " << result.output.string() << " ("
-              << result.elapsed.count() << " ms)\n";
+    if (request_conversion) {
+        const auto result = myvoice::VoiceConverter(convert_configuration).convert(convert_request);
+        std::cout << "Conversion successful: " << result.output.string() << " ("
+                  << result.elapsed.count() << " ms)\n";
+    }
     return 0;
 }
 }  // namespace

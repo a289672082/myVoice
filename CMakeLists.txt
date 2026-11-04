@@ -57,7 +57,9 @@ if(BUILD_TESTING AND MYVOICE_BUILD_TESTS)
             COMMAND myvoice_tests "${Python3_EXECUTABLE}")
         set_tests_properties(myvoice_integration PROPERTIES TIMEOUT 20)
         add_test(NAME myvoice_cli_help COMMAND myvoice_cli /help)
-        add_test(NAME myvoice_cli_show COMMAND myvoice_cli /engine singing /show)
+        add_test(NAME myvoice_cli_seed_help COMMAND myvoice_cli /Seed-VC /help)
+        add_test(NAME myvoice_cli_rvc_help COMMAND myvoice_cli /RVC /help)
+        add_test(NAME myvoice_cli_show COMMAND myvoice_cli /Seed-VC /engine singing /show)
         add_test(NAME myvoice_rvc_training_mock
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rvc_train.py"
                     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py")
