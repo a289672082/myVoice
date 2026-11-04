@@ -57,7 +57,8 @@ int run_tui() {
                 return;
             }
             if (worker.joinable()) worker.join();  // 之前任务已经结束
-            const auto config = shell.configuration;
+            auto config = shell.configuration;
+            config.capture_child_output = true;  // Python stdout/stderr 不得破坏 FTXUI 画面
             const auto request = shell.request;
             log_message("正在后台运行 Seed-VC，请查看状态栏...");
             worker = std::thread([&, config, request] {

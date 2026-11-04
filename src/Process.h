@@ -9,6 +9,7 @@ namespace myvoice::detail {
 int run_process(const std::filesystem::path& executable,
                 const std::vector<std::filesystem::path>& args,
                 const std::filesystem::path& working_directory,
-                std::chrono::milliseconds timeout);
+                std::chrono::milliseconds timeout,
+                const std::filesystem::path& log_file = {});
 
 }  // namespace myvoice::detail

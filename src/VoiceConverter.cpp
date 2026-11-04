@@ -1,9 +1,11 @@
 #include "myvoice/VoiceConverter.h"
 #include "Process.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -92,8 +94,25 @@ Result VoiceConverter::convert(const Request& request) const {
         args.insert(args.end(), {"--f0-condition", "True", "--auto-f0-adjust", "False",
                                  "--semi-tone-shift", "0"});
     }
-    const int code = detail::run_process(python, args, seed_root, configuration_.timeout);
-    if (code != 0) throw std::runtime_error("Seed-VC inference exited with code " + std::to_string(code));
+    const fs::path log_file = configuration_.capture_child_output ? temporary.path / "backend.log" : fs::path{};
+    const auto error_detail = [&] {
+        if (log_file.empty()) return std::string{};
+        std::ifstream f(log_file, std::ios::binary);
+        if (!f) return std::string{};
+        f.seekg(0, std::ios::end);
+        const std::streamoff end = f.tellg();
+        if (end <= 0) return std::string{};
+        f.seekg(std::max<std::streamoff>(0, end - 1800));
+        const std::string content{std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+        return std::string("; Python log tail: ") + content;
+    };
+    int code;
+    try {
+        code = detail::run_process(python, args, seed_root, configuration_.timeout, log_file);
+    } catch (const std::exception& ex) {
+        throw std::runtime_error(std::string(ex.what()) + error_detail());
+    }
+    if (code != 0) throw std::runtime_error("Seed-VC inference exited with code " + std::to_string(code) + error_detail());
 
     fs::path produced;
     for (const auto& entry : fs::directory_iterator(temporary.path)) {
