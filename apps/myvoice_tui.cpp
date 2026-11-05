@@ -34,6 +34,8 @@ int run_tui() {
     std::size_t history_pos = 0;
     std::mutex worker_mutex;
     std::string worker_message;
+    std::string pending_model_name; // 仅由工作线程写入，UI 线程负责真正执行 /load-model
+    myvoice::ConsoleMenu pending_model_menu = myvoice::ConsoleMenu::Main;
     std::atomic<bool> busy{false};
     std::string current_job;
     std::thread worker;
@@ -111,8 +113,11 @@ int run_tui() {
                     }
                 });
             }
-            worker = std::thread([&, config, request, is_training, is_gpu, gpu_check_only, training, training_config] {
+            const auto job_menu = shell.menu();
+            worker = std::thread([&, config, request, is_training, is_gpu, gpu_check_only,
+                                  training, training_config, job_menu] {
                 std::string outcome;
+                std::string trained_model_name;
                 try {
                     if (is_gpu) {
                         const auto logfile = myvoice::VoiceTrainer(training_config)
@@ -134,6 +139,7 @@ int run_tui() {
                         if (!result.primary_model.empty())
                             outcome += " | 已注册: " + result.primary_model.string();
 #endif
+                        if (!result.primary_model.empty()) trained_model_name = training.name;
                         if (!result.primary_model.empty() && !training.preview_source.empty()) {
                             // 试听样本是可选的：转换失败不影响已经成功训练并登记的模型。
                             try {
@@ -183,6 +189,8 @@ int run_tui() {
                 {
                     std::lock_guard<std::mutex> guard(worker_mutex);
                     worker_message = std::move(outcome);
+                    pending_model_name = std::move(trained_model_name);
+                    pending_model_menu = job_menu;
                 }
                 busy = false;
                 app.PostEvent(Event::Custom);  // Worker 不直接操作 FTXUI 控件
@@ -221,6 +229,18 @@ int run_tui() {
             if (!worker_message.empty()) {
                 log_message(worker_message);
                 worker_message.clear();
+                if (!pending_model_name.empty()) {
+                    // 只能在原训练引擎的菜单内加载；避免训练期间切换菜单后混入错误模型。
+                    if (shell.menu() == pending_model_menu) {
+                        const auto loaded = shell.execute("/load-model " + pending_model_name);
+                        log_message(loaded.success ?
+                            "训练模型已自动加载，可以直接设置 /source 然后 /convert 试听。" :
+                            "模型登记成功，但自动加载失败：" + loaded.message);
+                    } else {
+                        log_message("训练完成。请返回对应引擎，用 /models 和 /load-model 加载模型。");
+                    }
+                    pending_model_name.clear();
+                }
             }
         }
         std::vector<Element> lines;
