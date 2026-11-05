@@ -105,7 +105,7 @@ Seed-VC 的模型不能使用 RVC 权重。进入它自己的菜单：
 /convert
 ```
 
-**Seed-VC V2 即使加载微调权重，仍然需要目标音色参考录音 `/target`。** 这些 V2 检查点只能通过 `speech` 加载，不能用于 Seed-VC V1 `singing`。
+**Seed-VC V2 即使加载微调权重，仍然需要目标音色参考录音 `/target`。** 如需切换到 V1 歌声模式，先执行 `/unload-model` 清除 V2 检查点，再输入 `/engine singing`。 这些 V2 检查点只能通过 `speech` 加载，不能用于 Seed-VC V1 `singing`。
 
 ### 自动管理的边界
 
@@ -125,7 +125,7 @@ Seed-VC 的模型不能使用 RVC 权重。进入它自己的菜单：
 | `/engine speech` | Seed-VC V2 零样本普通语音转换 |
 | `/engine singing` | Seed-VC V1 带 F0 条件歌声转换（默认不移调） |
 | `/train` | RVC 自动训练；Seed-VC V2 CFM 微调；自动音质筛选、GPU、权重下载、注册模型 |
-| `/engine rvc` | 使用训练后的 RVC `.pth` 文件进行离线推理 |
+| `/RVC` + `/model` / `/load-model` | 使用训练后的 RVC `.pth` 文件进行离线推理 |
 | `/train-log` | 查看 RVC / Seed-VC 对应训练日志尾部 |
 | `/models`、`/load-model` | 分引擎模型登记、列表与加载 |
 | 高音失真自动修复 / 自动音域映射 | **未实现**，不能保证消除女声高音转男声失真 |
@@ -182,7 +182,7 @@ ctest --preset linux
 /gpu 0
 /index on
 /train-timeout 43200
-/train
+/train-legacy
 ```
 
 训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1\`，索引可链接到 `assets/indices`。
