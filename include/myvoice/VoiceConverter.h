@@ -21,6 +21,8 @@ struct Request {
     std::filesystem::path target;  // Seed-VC 模式的目标参考音频
     std::filesystem::path output;  // 最终输出的 WAV 文件
     std::filesystem::path trained_model; // RVC 模式的 .pth 文件
+    std::filesystem::path seed_cfm_model; // Seed-VC V2 专用微调 CFM 模型
+    std::filesystem::path seed_ar_model;  // Seed-VC V2 AR 模型（可沿用官方基础权重）
     Mode mode = Mode::Speech;
     int diffusion_steps = 30;     // 1..200；高步数通常更慢
     bool overwrite = false;

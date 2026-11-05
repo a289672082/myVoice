@@ -4,29 +4,38 @@
 #include <string>
 
 namespace myvoice {
+enum class TrainingEngine { Rvc, SeedVC };
 
-// RVC v2 单说话人 F0 音色训练；目标男声录音必须拥有使用许可。
+// 保留原始 RVC 手动训练兼容性；smart=true 会执行自动质检、下载与硬件检测。
 struct TrainingRequest {
-    std::filesystem::path dataset; // 训练音频所在目录，支持 WAV/FLAC/MP3 等（由 RVC/ffmpeg 解码）。
-    std::string name = "myvoice";  // 安全的实验名，生成到 RVC/logs/<name>。
+    std::filesystem::path dataset;
+    std::string name = "myvoice";
+    TrainingEngine engine = TrainingEngine::Rvc;
+    bool smart = false;
+    bool offline = false;       // 不自动下载缺失的预训练文件
     int epochs = 200;
-    int batch_size = 4;
+    int steps = 1000;           // Seed-VC V2 微调的最大步数
+    int batch_size = 0;         // 智能模式：0=自动
     int save_every = 20;
-    int workers = 4;
-    std::string device = "cuda"; // cuda 或 cpu；GPU 优先。
-    int gpu = 0;
+    int workers = 0;            // 智能模式：0=自动
+    std::string device = "auto"; // auto / cuda / cpu
+    int gpu = -1;               // -1=自动选择可用显卡
     bool build_index = true;
 };
 struct TrainingConfiguration {
-std::filesystem::path python; // 默认使用 runtime/<平台>/rvc/ 中的免安装 Python
+    std::filesystem::path python;
     std::filesystem::path rvc_root;
-    std::filesystem::path bridge_script; // 默认通过 CMake 定位 scripts/rvc_train.py。
+    std::filesystem::path seed_vc_root;
+    std::filesystem::path bridge_script; // 手动 RVC 训练桥接脚本
+    std::filesystem::path smart_script;  // 智能训练器，默认为 scripts/smart_train.py
     std::chrono::milliseconds timeout{std::chrono::hours(12)};
 };
 struct TrainingResult {
     std::filesystem::path experiment_dir;
     std::filesystem::path log_file;
     std::chrono::milliseconds elapsed{};
+    std::filesystem::path primary_model;   // 训练成功自动注册模型；RVC pth / Seed-VC CFM pth
+    std::filesystem::path secondary_model; // Seed-VC AR 检查点
 };
 class VoiceTrainer {
 public:

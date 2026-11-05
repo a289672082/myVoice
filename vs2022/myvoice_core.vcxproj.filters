@@ -13,6 +13,7 @@
     <ClInclude Include="..\include\myvoice\VoiceConverter.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\include\myvoice\EnginePaths.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\include\myvoice\PythonRuntime.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\include\myvoice\ModelRegistry.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\include\myvoice\VoiceTrainer.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\src\Process.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
