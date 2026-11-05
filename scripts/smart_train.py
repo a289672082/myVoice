@@ -228,6 +228,16 @@ def prepare_dataset(source: Path, dest: Path, engine: str, *,
     total = 0.0
     for i, path in enumerate(candidates, 1):
         try:
+            if path.stat().st_size > 512 * 1024 * 1024:
+                raise ValueError("音频超过 512 MiB，建议先切割后再训练")
+            # libsndfile 能直接取得时长时先拒绝超长文件，避免加载数小时音频占满内存。
+            try:
+                info = sf.info(path)
+                max_duration = 30 if engine == "seed-vc" else 180
+                if info.duration > max_duration:
+                    raise ValueError(f"时长 {info.duration:.1f}s 超过 {max_duration}s，建议先切割")
+            except (RuntimeError, OSError):
+                pass  # MP3/OGG 容器不支持时交由 read_audio / librosa 判断
             x, rate = read_audio(path)
             reasons, warnings, metrics = check_audio(x, rate, engine)
             entry = {"source": str(path), "warnings": warnings, **metrics}
