@@ -4,7 +4,7 @@ Windows / Linux 跨平台 C++17 + FTXUI 语音转换程序，附带可直接打�
 
 **FTXUI、RVC、Seed-VC 的源码都已直接检入本仓库**，位于 `third_party/`，不是 Git 子模块，不需要 CMake/运行时从 GitHub 下载引擎源码。FTXUI 为 MIT；RVC 为 MIT；Seed-VC 为 GPL-3.0，详见各自 `LICENSE`。请分别遵守对应许可。
 
-**重要限制：** 此次内置的是源码，便携 Python 运行包单独通过同仓库 Releases 分发，而不是完整的离线 AI 运行环境。PyTorch、CUDA、Python 第三方包、HuBERT/RMVPE、Seed-VC 所需检查点等大型预训练模型权重仍需要单独准备；因此 **C++ 编译离线可行，首次模型运行不保证离线**。不包含第三方示例歌曲或人物录音。
+**首次使用：** 仓库内置 RVC、Seed-VC 和 FTXUI 源码。完整 CPU 便携 Python 可通过 `scripts/get_portable_python.ps1`（Linux 为 .sh）免安装解压。智能 `/train` 会按需下载预训练权重；NVIDIA GPU 由用户明确执行 `/gpu-check`、`/gpu-setup` 后配置独立 CUDA 环境。**大型权重与 CUDA 环境不在普通 Git 文件中，首次运行通常需联网。**
 
 | 引擎 | 默认源码目录 | 功能 |
 |---|---|---|
@@ -90,7 +90,7 @@ bash scripts/get_portable_python.sh all
 /convert
 ```
 
-模型会自动登记到 `models/index.tsv`，无需自行查找 `.pth`。若在向导中填写测试音频，将在训练成功后自动生成独立的 `models/previews/*_preview.wav` 供试听，**不会自动播放、也不会覆盖已有文件**。Seed-VC 微调后的模型只用于 `/engine speech`，试听转换仍需 `/target` 参考录音。普通 WAV 试听文件可用系统音频播放器打开，程序不会自动执行或打开任何外部文件。
+模型会自动登记到 `models/index.tsv`，在当前引擎菜单中也会尝试自动加载训练好的模型，无需自行查找 `.pth`。若在向导中填写测试音频，将在训练成功后自动生成独立的 `models/previews/*_preview.wav` 供试听，**不会自动播放、也不会覆盖已有文件**。Seed-VC 微调后的模型只用于 `/engine speech`，试听转换仍需 `/target` 参考录音。普通 WAV 试听文件可用系统音频播放器打开，程序不会自动执行或打开任何外部文件。
 
 **限制**：训练向导可减少常规配置，但不能保证所提供录音的版权、说话人身份、无伴奏或最终音色质量；也无法保证所有显卡都支持固定的 PyTorch/CUDA 组合。对真实 GPU 的完整训练、断点续训和端到端音质仍需在用户硬件上验证。
 
@@ -370,7 +370,7 @@ py -3.12 -m venv .venv-rvc
 .\.venv-rvc\Scripts\python.exe -m pip install -r third_party/rvc/requirments_cpu_py312.txt
 ```
 
-GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt` 或 `requirments_cu128_py312.txt`，不可混装。RVC 训练还需 `assets/pretrained_v2/` 等模型资源；Seed-VC 初次推理也可能通过 Hugging Face 下载对应权重。本项目只内置引擎源码，**不会自动配置 Python 或下载全部模型权重**。 
+GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt` 或 `requirments_cu128_py312.txt`，不可混装。RVC 训练还需 `assets/pretrained_v2/` 等模型资源；Seed-VC 初次推理也可能通过 Hugging Face 下载对应权重。现在可通过自带脚本准备 Python 便携环境，智能 `/train` 按需检查/下载模型权重，部分官方组件仍可能另行下载。 
 
 ## 内置引擎来源与离线依赖
 

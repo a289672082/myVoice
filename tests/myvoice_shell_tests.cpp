@@ -95,6 +95,22 @@ int main() {
             check(!shell.execute("not-existing-voice-folder").success, "wizard rejects missing data folder");
             check(shell.execute("/cancel").success && !shell.wizard_active(), "wizard cancellation");
             check(shell.seed_training.name == old_name, "wizard cancel should not modify training");
+            // 测试新手向导的可选试听源文件与 Seed-VC 目标参考音频步骤。
+            const auto audio_sample = std::filesystem::temp_directory_path() /
+                ("myvoice-test-preview-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()) + ".wav");
+            { std::ofstream out(audio_sample, std::ios::binary); out << "mock wav"; }
+            check(shell.execute("/train-wizard").success, "wizard preview restart");
+            check(shell.execute(std::filesystem::current_path().string()).success, "preview dataset");
+            check(shell.execute("seed_voice_preview").success, "preview name");
+            check(shell.execute("auto").success, "preview device");
+            check(shell.execute(audio_sample.string()).success, "preview source");
+            check(shell.execute(audio_sample.string()).success, "Seed reference sample");
+            check(shell.execute("确认").action == CommandAction::Train, "preview training confirmed");
+            check(shell.seed_training.preview_source == std::filesystem::absolute(audio_sample) &&
+                  shell.seed_training.preview_target == std::filesystem::absolute(audio_sample),
+                  "wizard stores optional preview settings");
+            std::filesystem::remove(audio_sample);
             check(shell.execute("/train-wizard").success, "restart Seed wizard");
             check(shell.execute(std::filesystem::current_path().string()).success,
                   "wizard accepts existing folder");
