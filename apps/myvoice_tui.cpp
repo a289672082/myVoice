@@ -22,7 +22,9 @@ int run_tui() {
     auto app = App::TerminalOutput();
     std::string line = "/";
     std::vector<std::string> history;
-    std::vector<std::string> log = {"myVoice 主菜单  |  输入 /Seed-VC 或 /RVC 进入对应引擎"};
+    // 首屏展示中文操作引导；命令仍以 / 开头，避免破坏既有用户习惯。
+    std::vector<std::string> log = {"欢迎使用 myVoice 中文语音控制台",
+        "请输入 /Seed-VC 或 /RVC 进入对应子菜单；输入 /help 查看中文说明"};
     std::size_t history_pos = 0;
     std::mutex worker_mutex;
     std::string worker_message;
@@ -30,6 +32,7 @@ int run_tui() {
     std::string current_job;
     std::thread worker;
 
+    // 日志统一保留换行，防止 Python 多行信息覆盖当前 FTXUI 控件。
     const auto log_message = [&](const std::string& message) {
         std::istringstream stream(message);
         std::string item;
@@ -45,7 +48,7 @@ int run_tui() {
         log_message("> " + command);
         const auto result = shell.execute(command);
         if (!result.success) {
-            log_message("ERROR: " + result.message);
+            log_message("错误：" + result.message);
             return;
         }
         if (result.action == myvoice::CommandAction::Quit) {
@@ -66,7 +69,7 @@ int run_tui() {
             const auto training = shell.active_training();
             const auto training_config = shell.active_training_configuration();
             const auto engine_name = shell.menu_name();
-            current_job = is_training ? "TRAINING" : "CONVERTING";
+            current_job = is_training ? "训练中" : "转换中";
             log_message(is_training ? "正在后台训练 " + engine_name + "：" + training.name +
                 " （输入 /train-log 查看日志，/quality-report 查看质检）" :
                 "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
@@ -94,7 +97,7 @@ int run_tui() {
                         outcome += " (" + std::to_string(result.elapsed.count()) + "ms)";
                     }
                 } catch (const std::exception& ex) {
-                    outcome = std::string("ERROR: ") + ex.what();
+                    outcome = std::string("错误：") + ex.what();
                 }
                 {
                     std::lock_guard<std::mutex> guard(worker_mutex);
@@ -108,6 +111,7 @@ int run_tui() {
         if (!result.message.empty()) log_message(result.message);
     };
 
+    // 回车执行已输入的 /命令；Tab 补全与历史命令在下方单独处理。
     InputOption option;
     option.on_enter = submit;
     auto input = Input(&line, "输入 /help", option);
@@ -142,15 +146,16 @@ int run_tui() {
         const std::size_t start = log.size() > 10 ? log.size() - 10 : 0;
         for (std::size_t i = start; i < log.size(); ++i)
             lines.push_back(text(log[i]));
+        // 候选项来自 CommandShell：保留命令英文原文，右侧附加中文用法说明。
         auto hints = shell.suggestions(line);
         std::vector<Element> completion;
         for (std::size_t i = 0; i < std::min<std::size_t>(hints.size(), 6); ++i)
             completion.push_back(text(hints[i].display) | dim);
         if (completion.empty()) completion.push_back(text("输入 / 选择命令；Tab 补全命令、路径与枚举参数") | dim);
         return vbox({
-            text(" myVoice / " + shell.menu_name() + "  |  Voice Conversion Console ") | bold | color(Color::Cyan),
+            text(" myVoice / " + shell.menu_name() + "  |  中文语音转换控制台 ") | bold | color(Color::Cyan),
             separator(),
-            text(busy.load() ? "STATUS: " + current_job + "..." : "STATUS: READY") |
+            text(busy.load() ? "状态：" + current_job + "..." : "状态：就绪") |
                 color(busy.load() ? Color::Yellow : Color::Green),
             separator(),
             vbox(std::move(lines)) | flex,
@@ -158,8 +163,8 @@ int run_tui() {
             hbox({text(" > "), input->Render()}) | border,
             vbox(std::move(completion)),
             text(shell.menu() == myvoice::ConsoleMenu::Main ?
-                "Enter 执行 | Tab 补全 | /Seed-VC 进入 Seed-VC | /RVC 进入 RVC | /quit 退出" :
-                "Enter 执行 | Tab 补全 | /train 智能训练 | /models 模型列表 | /load-model 加载 | /back 返回") | dim
+                "回车执行 | Tab 补全 | ↑↓ 历史命令 | /Seed-VC 声音转换 | /RVC 模型训练 | /quit 退出" :
+                "回车执行 | Tab 补全 | /train 智能训练 | /models 模型列表 | /load-model 加载 | /back 返回") | dim
         }) | border;
     });
     app.Loop(view);

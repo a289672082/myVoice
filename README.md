@@ -225,33 +225,39 @@ RVC 推理默认 RMVPE、`pitch=0`、`index-rate=0`，**不要求手工操作移
 
 唱歌时用 `/engine singing`，官方 F0 条件模型默认不移调，避免影响原始伴奏调性。
 
-## 五、分层子菜单、自动提示与批处理
+## 五、中文菜单注释、自动提示与批处理
 
-**主菜单**：输入 `/` 只显示 `/Seed-VC`、`/RVC`、`/help`、`/show` 和 `/quit`。选择引擎后，页眉切换为 `myVoice / Seed-VC` 或 `myVoice / RVC`，候选命令只显示当前引擎支持的操作：
+**所有菜单、帮助信息和自动补全提示均使用中文解释**；命令本身仍以 `/` 开头，并保留 `/Seed-VC`、`/RVC`、`/train` 等已有名称。输入 `/help` 可以查看当前子菜单的**中文命令用途、参数和使用示例**；输入 `/show` 查看中文参数概览。
 
 ```text
-myVoice / Main
+myVoice / 主菜单 · 中文操作帮助
+  /Seed-VC  ——  进入 Seed-VC 语音转换及 V2 微调子菜单
+  /RVC      ——  进入 RVC 模型训练和语音转换子菜单
+  /help     ——  显示当前菜单的中文命令帮助
+
 > /Seed-VC
 myVoice / Seed-VC
-> /engine singing
-> /source female.wav
-> /target male.wav
+> /engine speech
+> /source "D:\audio\female.wav"
+> /target "D:\audio\male.wav"
+> /output "D:\audio\converted.wav"
 > /convert
 > /back
-myVoice / Main
+
+myVoice / 主菜单
 > /RVC
-myVoice / RVC
-> /dataset male_dataset
-> /epochs 200
+> /dataset "D:\voice_data\male"
+> /train-name male_v1
+> /device auto
 > /train
-> /back
+> /models
+> /load-model male_v1
 ```
 
-- **Seed-VC 子菜单**：`/source`、`/target`、`/output`、`/engine speech|singing`、`/steps`、`/convert`、`/seed-root`、`/python`、`/timeout`、`/overwrite`。仅支持零样本推理；目前**不支持 Seed-VC 微调**。
-- **RVC 子菜单**：`/source`、`/output`、`/model`、`/convert`，以及 `/dataset`、`/train-name`、`/epochs`、`/batch`、`/save-every`、`/workers`、`/device`、`/gpu`、`/index`、`/train-timeout`、`/train-script`、`/train-log`、`/train`，另有 `/rvc-root`、`/python`、`/timeout`、`/overwrite`。
-- **通用命令**：每一层均支持 `/help`、`/show`、`/quit`；引擎子菜单支持 `/back` 返回主菜单。主菜单不允许直接 `/convert` 或 `/train`，Seed-VC 不允许 `/train`，RVC 不允许 `/engine singing` 和 `/target`。避免意外混用引擎和权重。
-- **分别记忆配置**：Seed-VC、RVC 的 Python 解释器、输入源音频和输出路径相互隔离，切换引擎后原有设置保留。RVC 训练与 RVC 推理共享 RVC Python 路径和源码目录。
-- **自动补全**：输入 `/` 查看当前层级命令，输入 `/eng`（Seed-VC 内）或 `/tr`（RVC 内）显示匹配候选；Tab 补全，Enter 执行，↑↓ 查看历史命令。带空格的路径请加引号。`/Seed-VC` 与 `/RVC` 不区分 ASCII 大小写。
+- **Seed-VC 子菜单**：`/engine speech` 表示讲话（V2），`/engine singing` 表示歌声（V1）。`/train` 可微调 Seed-VC V2 CFM；`/models` 和 `/load-model` 可查看并加载训练好的权重；`/unload-model` 可卸载 V2 权重后切换到 V1 歌声模式。
+- **RVC 子菜单**：`/train` 是自动检查录音质量、预训练权重及硬件的一键训练入口；`/train-legacy` 保留旧版手动训练；`/models`、`/load-model` 管理训练权重。
+- **共同命令**：`/help` 显示中文操作说明，`/show` 显示中文状态，`/back` 返回主菜单，`/quit` 退出。不同引擎不能混用训练权重。
+- **参数提示**：例如输入 `/device a`，Tab 会补全成 `/device auto`，候选旁显示“自动检测训练设备”；`on`/`off`、`speech`/`singing` 也附带中文解释。上下方向键查看历史命令，带空格的文件路径请使用双引号。
 
 ### 无界面批处理
 
@@ -261,12 +267,13 @@ myVoice / RVC
 # RVC 训练
 .\build\vs2022\Release\myvoice_cli.exe `
   /RVC /python "D:\myVoice\.venv-rvc\Scripts\python.exe" `
-  /train-name male_v1 /epochs 200 /batch 4 /train
+  /dataset "D:\voice_data\male" /train-name male_v1 /epochs 200 /batch 4 /train
 
 # Seed-VC 文件转换
 .\build\vs2022\Release\myvoice_cli.exe `
   /Seed-VC /python "D:\myVoice\.venv-seed\Scripts\python.exe" `
-  /target "D:\audio\male.wav" /output "D:\audio\result.wav" /convert
+  /source "D:\audio\female.wav" /target "D:\audio\male.wav" `
+  /output "D:\audio\result.wav" /convert
 ```
 
 脚本不会自动运行转换：`/convert` 或 `/train` 必须位于最后一个参数；否则只设置并显示选项。`/help` 显示当前菜单帮助。例如 `myvoice_cli /RVC /help`。失败时输出非零退出码。

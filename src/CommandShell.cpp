@@ -12,79 +12,94 @@
 namespace myvoice {
 namespace {
 namespace fs = std::filesystem;
+// 每条命令包含：固定的 /英文命令名、用法示例、面向用户的中文说明。
+// 命令名保持不变，以兼容既有脚本和 Tab 自动补全。
 struct CommandInfo { const char* name; const char* usage; const char* description; };
+// 【主菜单】只允许选择引擎、查看帮助和退出，不提供训练/转换指令。
 constexpr CommandInfo kMain[] = {
-    {"/Seed-VC", "/Seed-VC", "进入 Seed-VC 零样本变声菜单"},
-    {"/RVC", "/RVC", "进入 RVC 训练和变声菜单"},
-    {"/help", "/help", "查看当前菜单命令"},
-    {"/show", "/show", "查看当前菜单状态"},
-    {"/quit", "/quit", "退出"},
+    {"/Seed-VC", "/Seed-VC", "进入 Seed-VC 语音转换及 V2 微调子菜单"},
+    {"/RVC", "/RVC", "进入 RVC 模型训练和语音转换子菜单"},
+    {"/help", "/help", "显示当前菜单的中文命令帮助"},
+    {"/show", "/show", "查看当前菜单及已设置参数"},
+    {"/quit", "/quit", "退出程序"},
 };
+// 【Seed-VC 子菜单】speech 使用 V2 推理/CFM 微调；singing 使用 V1 歌声模型。
+// 两种模式不能混用检查点，Seed-VC 也不能直接加载 RVC 训练权重。
 constexpr CommandInfo kSeed[] = {
+    // 基本设置：帮助、状态、可选的 Python 解释器与源码目录。
     {"/help", "/help", "查看 Seed-VC 命令"},
     {"/show", "/show", "显示 Seed-VC 配置"},
     {"/python", "/python <Python路径>", "Seed-VC Python 解释器"},
     {"/seed-root", "/seed-root <目录>", "Seed-VC 所在目录"},
-    {"/source", "/source <音频文件>", "原始声音文件"},
-    {"/target", "/target <音频文件>", "目标音色参考录音"},
+    // 语音转换：先设置源音频、参考音频和输出文件，再执行 /convert。
+    {"/source", "/source <音频文件>", "设置需要转换的源音频"},
+    {"/target", "/target <音频文件>", "设置目标音色参考录音（V2 微调后仍需提供）"},
     {"/output", "/output <结果.wav>", "输出文件"},
-    {"/engine", "/engine speech|singing", "普通讲话或歌声模型"},
-    {"/steps", "/steps <1..200>", "扩散推理步数"},
+    {"/engine", "/engine speech|singing", "选择模式：speech=讲话 V2，singing=歌声 V1"},
+    {"/steps", "/steps <1..200>", "设置扩散推理步数（越大通常越慢）"},
     {"/timeout", "/timeout <1..86400>", "推理超时（秒）"},
-    {"/overwrite", "/overwrite on|off", "覆盖已有结果"},
+    {"/overwrite", "/overwrite on|off", "是否允许覆盖已有输出：on=允许，off=禁止"},
     {"/convert", "/convert", "使用 Seed-VC 进行文件转换"},
-    {"/cfm-model", "/cfm-model <模型.pth>", "Seed-VC V2 CFM 微调权重"},
-    {"/ar-model", "/ar-model <模型.pth>", "Seed-VC V2 AR 模型"},
-    {"/dataset", "/dataset <目录>", "训练目标音色素材"},
+        // V2 微调模型加载：CFM/AR 只能供 V2 speech 使用，不能用于 V1 singing。
+    {"/cfm-model", "/cfm-model <模型.pth>", "手工指定 Seed-VC V2 微调后的 CFM 权重"},
+    {"/ar-model", "/ar-model <模型.pth>", "手工指定 Seed-VC V2 的 AR 权重"},
+        // 智能微调：指定目标音色素材目录和实验名称；自动检查权重、GPU 和录音质量。
+    {"/dataset", "/dataset <目录>", "设置用于训练的目标音色录音目录"},
     {"/train-name", "/train-name <名称>", "训练模型名称"},
-    {"/train-steps", "/train-steps <1..1000000>", "微调步数"},
+    {"/train-steps", "/train-steps <1..1000000>", "指定 Seed-VC V2 微调最大训练步数"},
     {"/epochs", "/epochs <1..10000>", "最大训练轮数"},
-    {"/batch", "/batch auto|<1..128>", "自动设置批次"},
-    {"/workers", "/workers auto|<0..64>", "自动设置线程数"},
-    {"/device", "/device auto|cuda|cpu", "训练显卡自动检测"},
-    {"/gpu", "/gpu auto|<0..31>", "GPU 编号"},
+    {"/batch", "/batch auto|<1..128>", "训练批大小：auto=按设备显存自动选择"},
+    {"/workers", "/workers auto|<0..64>", "数据加载线程数：auto=自动配置"},
+    {"/device", "/device auto|cuda|cpu", "训练设备：auto=自动检测，cuda=显卡，cpu=处理器"},
+    {"/gpu", "/gpu auto|<0..31>", "指定显卡序号：auto=自动选择"},
     {"/save-every", "/save-every <1..10000>", "检查点保存间隔"},
-    {"/offline", "/offline on|off", "是否禁止下载权重"},
+    {"/offline", "/offline on|off", "权重下载：on=离线不下载，off=允许自动下载"},
     {"/train-timeout", "/train-timeout <秒>", "训练超时"},
-    {"/train", "/train", "一键 Seed-VC V2 CFM 微调"},
+    {"/train", "/train", "自动质检录音、准备权重并微调 Seed-VC V2 CFM"},
     {"/train-log", "/train-log", "查看微调日志"},
-    {"/quality-report", "/quality-report", "查看质检报告"},
-    {"/models", "/models", "列出本引擎模型"},
+    {"/quality-report", "/quality-report", "查看音频质检报告的保存路径"},
+        // 模型管理：按名称加载已登记模型；Tab 可自动补全已注册的模型名。
+    {"/models", "/models", "列出 Seed-VC 已登记的微调模型"},
     {"/unload-model", "/unload-model", "卸载当前微调模型，恢复默认推理"},
-    {"/load-model", "/load-model <名称>", "加载微调模型"},
+    {"/load-model", "/load-model <名称>", "按名称加载已登记的 Seed-VC V2 微调模型"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
+// 【RVC 子菜单】训练和推理使用 RVC 自身的权重；不接受 Seed-VC 检查点。
 constexpr CommandInfo kRvc[] = {
+    // 基本设置：帮助、状态及可选的本地 Python / 源码路径。
     {"/help", "/help", "查看 RVC 命令"},
     {"/show", "/show", "显示 RVC 配置"},
     {"/python", "/python <Python路径>", "RVC Python 解释器"},
     {"/rvc-root", "/rvc-root <目录>", "RVC 源码目录"},
-    {"/source", "/source <音频文件>", "推理源音频文件"},
+    // 语音转换：可通过 /model 指定文件，或 /load-model 按名称加载已注册权重。
+    {"/source", "/source <音频文件>", "设置需要转换的源音频"},
     {"/output", "/output <结果.wav>", "推理输出文件"},
-    {"/model", "/model <模型.pth>", "RVC 已训练模型权重"},
+    {"/model", "/model <模型.pth>", "手工指定已经训练好的 RVC 推理模型 .pth"},
     {"/timeout", "/timeout <1..86400>", "推理超时（秒）"},
     {"/overwrite", "/overwrite on|off", "覆盖已有结果"},
-    {"/convert", "/convert", "使用已训练的 RVC 模型转换"},
-    {"/dataset", "/dataset <目录>", "训练数据目录"},
+    {"/convert", "/convert", "使用当前选择的 RVC 模型转换源音频"},
+    // 智能训练：填写录音目录和实验名，然后 /train；其余参数可保持 auto。
+    {"/dataset", "/dataset <目录>", "设置用于训练的目标音色录音目录"},
     {"/train-name", "/train-name <名称>", "训练实验名"},
     {"/epochs", "/epochs <1..10000>", "训练轮数"},
-    {"/batch", "/batch auto|<1..128>", "自动批次"},
+    {"/batch", "/batch auto|<1..128>", "训练批大小：auto=按设备显存自动选择"},
     {"/save-every", "/save-every <1..10000>", "权重保存间隔"},
-    {"/workers", "/workers auto|<0..64>", "自动线程数"},
-    {"/device", "/device auto|cuda|cpu", "自动检测训练 GPU"},
-    {"/gpu", "/gpu auto|<0..31>", "自动选择 GPU"},
-    {"/index", "/index on|off", "训练后构建 FAISS 索引"},
+    {"/workers", "/workers auto|<0..64>", "数据加载线程数：auto=自动配置"},
+    {"/device", "/device auto|cuda|cpu", "训练设备：auto=自动检测，cuda=显卡，cpu=处理器"},
+    {"/gpu", "/gpu auto|<0..31>", "指定显卡序号：auto=自动选择"},
+    {"/index", "/index on|off", "训练后是否生成 FAISS 检索索引"},
     {"/train-timeout", "/train-timeout <1..86400>", "训练超时（秒）"},
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
-    {"/train", "/train", "一键质检/下载预训练权重/自适应训练"},
+    {"/train", "/train", "自动检查录音与权重、选择显卡并训练 RVC"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
-    {"/models", "/models", "列出已训练模型"},
+        // 模型管理：自动读取训练结束后登记的 RVC 模型清单。
+    {"/models", "/models", "列出已经登记的 RVC 训练模型"},
     {"/unload-model", "/unload-model", "清除当前 RVC 模型选择"},
-    {"/load-model", "/load-model <名称>", "加载已登记模型"},
-    {"/quality-report", "/quality-report", "查看音频质检报告"},
-    {"/offline", "/offline on|off", "禁止自动下载模型"},
-    {"/train-legacy", "/train-legacy", "旧版 RVC 手动训练"},
+    {"/load-model", "/load-model <名称>", "按模型名称加载 RVC 训练权重"},
+    {"/quality-report", "/quality-report", "显示音频筛选报告文件路径"},
+    {"/offline", "/offline on|off", "权重下载：on=离线不下载，off=允许自动下载"},
+    {"/train-legacy", "/train-legacy", "使用旧版手动参数执行 RVC 训练"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
@@ -120,20 +135,25 @@ std::vector<std::string> tokenize(const std::string& line) {
             if (active) { parts.push_back(word); word.clear(); active = false; }
         } else { word += c; active = true; }
     }
-    if (quote) throw std::invalid_argument("Unclosed quote");
+    if (quote) throw std::invalid_argument("参数中的引号没有闭合，请检查文件路径");
     if (active) parts.push_back(word);
     return parts;
 }
 int number(const std::string& value, int low, int high) {
     std::size_t used = 0;
     if (value.empty()) throw std::invalid_argument("Missing number");
-    const int n = std::stoi(value, &used);
+    int n = 0;
+    try { n = std::stoi(value, &used); }
+    catch (const std::exception&) {
+        throw std::invalid_argument("请输入有效整数：" + value);
+    }
     if (used != value.size() || n < low || n > high)
-        throw std::invalid_argument("Number out of range: " + value);
+        throw std::invalid_argument("数字超出允许范围（" + std::to_string(low) + "～" +
+                                    std::to_string(high) + "）：" + value);
     return n;
 }
 fs::path as_path(const std::string& s) {
-    if (s.empty()) throw std::invalid_argument("Path is empty");
+    if (s.empty()) throw std::invalid_argument("文件或目录路径不能为空");
 #ifdef _WIN32
     return fs::u8path(s);
 #else
@@ -159,10 +179,11 @@ bool allowed(ConsoleMenu menu, const std::string& key) {
     const auto set = command_set(menu);
     return std::any_of(set.first, set.last, [&](const CommandInfo& c) { return lower_ascii(c.name) == lower_ascii(key); });
 }
+// 标题与状态信息统一中文；引擎技术名称保持官方名称便于识别。
 std::string menu_label(ConsoleMenu menu) {
     if (menu == ConsoleMenu::SeedVC) return "Seed-VC";
     if (menu == ConsoleMenu::Rvc) return "RVC";
-    return "Main";
+    return "主菜单";
 }
 }  // namespace
 
@@ -173,29 +194,30 @@ CommandShell::CommandShell() {
     seed_training.save_every = 200;
 }
 TrainingRequest CommandShell::active_training() const {
-    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select an engine");
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("请先选择 /Seed-VC 或 /RVC 引擎");
     return menu_ == ConsoleMenu::SeedVC ? seed_training : training;
 }
 TrainingConfiguration CommandShell::active_training_configuration() const {
-    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select an engine");
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("请先选择 /Seed-VC 或 /RVC 引擎");
     return menu_ == ConsoleMenu::SeedVC ? seed_training_configuration : training_configuration;
 }
 
+// 显示菜单名称；命令路由仍以 ConsoleMenu 枚举判断，不依赖翻译后的文本。
 std::string CommandShell::menu_name() const { return menu_label(menu_); }
 const Configuration& CommandShell::conversion_configuration() const {
-    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select /Seed-VC or /RVC first");
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("请先输入 /Seed-VC 或 /RVC 进入子菜单");
     return menu_ == ConsoleMenu::SeedVC ? seed_configuration_ : rvc_configuration_;
 }
 const Request& CommandShell::conversion_request() const {
-    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select /Seed-VC or /RVC first");
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("请先输入 /Seed-VC 或 /RVC 进入子菜单");
     return menu_ == ConsoleMenu::SeedVC ? seed_request_ : rvc_request_;
 }
 CommandResult CommandShell::set_option(const std::string& command, const std::string& value) {
     try {
         const auto key = lower_ascii(command);
         if (!allowed(menu_, key))
-            throw std::invalid_argument("Command " + command + " is not available in " + menu_name() + "; try /help");
-        if (menu_ == ConsoleMenu::Main) throw std::invalid_argument("Choose /Seed-VC or /RVC first");
+            throw std::invalid_argument("当前" + menu_name() + "不支持命令 " + command + "，请输入 /help 查看可用命令");
+        if (menu_ == ConsoleMenu::Main) throw std::invalid_argument("请先选择 /Seed-VC 或 /RVC 引擎");
         TrainingRequest& tr = menu_ == ConsoleMenu::SeedVC ? seed_training : training;
         TrainingConfiguration& tc = menu_ == ConsoleMenu::SeedVC ?
             seed_training_configuration : training_configuration;
@@ -228,11 +250,11 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
         else if (key == "/gpu") tr.gpu = value == "auto" ? -1 : number(value, 0, 31);
         else if (key == "/device") {
             if (value != "auto" && value != "cpu" && value != "cuda")
-                throw std::invalid_argument("/device expects auto|cpu|cuda");
+                throw std::invalid_argument("/device 只能填写 auto（自动）、cuda（显卡）或 cpu（处理器）");
             tr.device = value;
         } else if (key == "/offline") {
             if (value != "on" && value != "off")
-                throw std::invalid_argument("/offline expects on|off");
+                throw std::invalid_argument("/offline 只能填写 on（禁止下载）或 off（允许下载）");
             tr.offline = value == "on";
         } else if (key == "/train-timeout")
             tc.timeout = std::chrono::seconds(number(value, 1, 86400));
@@ -251,7 +273,7 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
             (menu_ == ConsoleMenu::SeedVC ? seed_configuration_ : rvc_configuration_).timeout =
                 std::chrono::seconds(number(value, 1, 86400));
         } else if (key == "/overwrite") {
-            if (value != "on" && value != "off") throw std::invalid_argument("/overwrite expects on or off");
+            if (value != "on" && value != "off") throw std::invalid_argument("/overwrite 只能填写 on（允许覆盖）或 off（禁止覆盖）");
             (menu_ == ConsoleMenu::SeedVC ? seed_request_ : rvc_request_).overwrite = value == "on";
         } else if (menu_ == ConsoleMenu::SeedVC) {
             if (key == "/seed-root") {
@@ -263,9 +285,9 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
             else if (key == "/engine") {
                 if (value == "speech") seed_request_.mode = Mode::Speech;
                 else if (value == "singing") seed_request_.mode = Mode::Singing;
-                else throw std::invalid_argument("Seed-VC /engine expects speech or singing");
+                else throw std::invalid_argument("/engine 只能填写 speech（讲话 V2）或 singing（歌声 V1）");
             } else if (key == "/steps") seed_request_.diffusion_steps = number(value, 1, 200);
-            else throw std::invalid_argument("Unknown Seed-VC option: " + key);
+            else throw std::invalid_argument("Seed-VC 子菜单不支持该参数：" + key);
         } else {
             if (key == "/rvc-root") {
                 rvc_configuration_.rvc_root = as_path(value);
@@ -273,11 +295,11 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
             } else if (key == "/model") rvc_request_.trained_model = as_path(value);
             else if (key == "/train-script") training_configuration.bridge_script = as_path(value);
             else if (key == "/index") {
-                if (value != "on" && value != "off") throw std::invalid_argument("/index expects on or off");
+                if (value != "on" && value != "off") throw std::invalid_argument("/index 只能填写 on（生成索引）或 off（不生成索引）");
                 training.build_index = value == "on";
-            } else throw std::invalid_argument("Unknown RVC option: " + key);
+            } else throw std::invalid_argument("RVC 子菜单不支持该参数：" + key);
         }
-        return {CommandAction::None, key + " = " + value, true};
+        return {CommandAction::None, "已设置 " + key + "：" + value, true};
     } catch (const std::exception& e) {
         return {CommandAction::None, e.what(), false};
     }
@@ -288,10 +310,10 @@ CommandResult CommandShell::execute(const std::string& line) {
         const auto args = tokenize(trim(line));
         if (args.empty()) return {};
         const auto& key = args.front();
-        if (key.empty() || key[0] != '/') throw std::invalid_argument("Commands must start with / (try /help)");
+        if (key.empty() || key[0] != '/') throw std::invalid_argument("命令必须以 / 开头；输入 /help 查看用法");
         const auto normalized = lower_ascii(key);
         if (!allowed(menu_, normalized))
-            throw std::invalid_argument(key + " is unavailable in " + menu_name() + "; use /help");
+            throw std::invalid_argument("命令 " + key + " 不属于" + menu_name() + "；输入 /help 查看支持的命令");
         const bool no_value = normalized == "/seed-vc" || normalized == "/rvc" ||
             normalized == "/back" || normalized == "/help" || normalized == "/show" ||
             normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
@@ -299,14 +321,14 @@ CommandResult CommandShell::execute(const std::string& line) {
             normalized == "/quality-report" || normalized == "/unload-model" ||
             normalized == "/quit";
         if (no_value) {
-            if (args.size() != 1) throw std::invalid_argument(key + " takes no arguments");
+            if (args.size() != 1) throw std::invalid_argument(key + " 不需要附加参数");
             if (normalized == "/seed-vc") { menu_ = ConsoleMenu::SeedVC; return {CommandAction::None, "已进入 Seed-VC 菜单。输入 /help 查看专属命令。", true}; }
             if (normalized == "/rvc") { menu_ = ConsoleMenu::Rvc; return {CommandAction::None, "已进入 RVC 菜单。输入 /help 查看专属命令。", true}; }
             if (normalized == "/back") { menu_ = ConsoleMenu::Main; return {CommandAction::None, "已返回主菜单。", true}; }
             if (normalized == "/help") return {CommandAction::None, help(), true};
             if (normalized == "/show") return {CommandAction::None, summary(), true};
-            if (normalized == "/quit") return {CommandAction::Quit, "Goodbye", true};
-            if (normalized == "/convert") return {CommandAction::Convert, "Converting with " + menu_name() + "...", true};
+            if (normalized == "/quit") return {CommandAction::Quit, "已退出程序", true};
+            if (normalized == "/convert") return {CommandAction::Convert, "正在使用 " + menu_name() + " 转换声音...", true};
             if (normalized == "/train" || normalized == "/train-legacy") {
                 auto& tr = menu_ == ConsoleMenu::SeedVC ? seed_training : training;
                 tr.smart = normalized == "/train";
@@ -352,70 +374,101 @@ CommandResult CommandShell::execute(const std::string& line) {
                     seed ? "train_v2.py" : "train/train.py") /
                     (seed ? "runs" : "logs") / tr.name / "myvoice_train.log";
                 std::ifstream input(log_path, std::ios::binary);
-                if (!input) return {CommandAction::None, "No training log yet: " + as_string(log_path), false};
+                if (!input) return {CommandAction::None, "尚未生成训练日志：" + as_string(log_path), false};
                 input.seekg(0, std::ios::end);
                 const std::streamoff end = input.tellg();
-                if (end <= 0) return {CommandAction::None, "Training log is empty", true};
+                if (end <= 0) return {CommandAction::None, "训练日志目前为空", true};
                 input.seekg(std::max<std::streamoff>(0, end - 1600));
                 std::string tail{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
                 return {CommandAction::None, tail, true};
             }
         }
-        if (args.size() != 2) throw std::invalid_argument("Expected one value; quote paths containing spaces");
+        if (args.size() != 2) throw std::invalid_argument("命令只接受一个参数；包含空格的路径请用双引号包围");
         return set_option(key, args[1]);
     } catch (const std::exception& e) { return {CommandAction::None, e.what(), false}; }
 }
 
+// /help：按当前子菜单显示中文用法，不暴露其他引擎专属命令。
 std::string CommandShell::help() const {
     std::ostringstream out;
-    out << "myVoice / " << menu_name() << " | / 命令：Tab 自动补全，Enter 执行\n";
+    out << "myVoice / " << menu_name() << " · 中文操作帮助\n";
+    out << "输入 / 查看命令提示；Tab 自动补全；回车执行；上下方向键查看历史命令。\n\n";
     const auto set = command_set(menu_);
     for (auto it = set.first; it != set.last; ++it)
-        out << "  " << it->usage << "   " << it->description << '\n';
-    if (menu_ == ConsoleMenu::Main)
-        out << "先进入 /Seed-VC 或 /RVC，再执行对应模型的操作。\n";
-    else
-        out << "输入 /back 返回主菜单；文件路径含空格时用双引号包围。\n";
-    if (menu_ == ConsoleMenu::SeedVC)
-        out << "Seed-VC V2 专属 CFM 微调：/train，/models，/load-model 名称。\n";
-    else if (menu_ == ConsoleMenu::Rvc)
-        out << "RVC /train 为一键智能训练；/train-legacy 是旧手动流水线。\n";
+        out << "  " << it->usage << "  ——  " << it->description << '\n';
+    if (menu_ == ConsoleMenu::Main) {
+        out << "\n使用顺序：先输入 /Seed-VC 或 /RVC，再进行声音转换或模型训练。\n";
+    } else if (menu_ == ConsoleMenu::SeedVC) {
+        out << "\n讲话转换示例：/engine speech → /source → /target → /output → /convert\n";
+        out << "V2 微调示例：/dataset → /train-name → /train → /models → /load-model\n";
+        out << "说明：/engine singing 使用 V1 歌声模型，不能加载 V2 CFM/AR 检查点。\n";
+        out << "输入 /back 返回主菜单；带空格的文件路径请用双引号包围。\n";
+    } else {
+        out << "\n自动训练示例：/dataset → /train-name → /device auto → /train\n";
+        out << "使用模型示例：/models → /load-model → /source → /output → /convert\n";
+        out << "说明：/train-legacy 为旧版手工训练模式，/offline on 禁止联网下载权重。\n";
+        out << "输入 /back 返回主菜单；带空格的文件路径请用双引号包围。\n";
+    }
     return out.str();
 }
 
+// /show：统一使用中文字段名；显示值仍使用原有英文枚举，确保与输入参数一致。
 std::string CommandShell::summary() const {
     std::ostringstream o;
-    o << "Menu: " << menu_name();
-    if (menu_ == ConsoleMenu::Main) return o.str() + "\nUse /Seed-VC or /RVC to enter an engine menu.";
+    o << "当前菜单：" << menu_name();
+    if (menu_ == ConsoleMenu::Main)
+        return o.str() + "\n请选择 /Seed-VC（讲话/歌声转换、V2 微调）或 /RVC（训练、变声）。";
     const auto& cfg = conversion_configuration();
     const auto& req = conversion_request();
-    o << "\nMode: " << (req.mode == Mode::Speech ? "speech" : req.mode == Mode::Singing ? "singing" : "rvc")
-      << "\nSource: " << as_string(req.source)
-      << "\nOutput: " << as_string(req.output)
-      << "\nPython: " << (cfg.python.empty() ? "[auto: bundled portable runtime]" : as_string(cfg.python))
-      << "\nTimeout: " << cfg.timeout.count() / 1000 << "s"
-      << "\nOverwrite: " << (req.overwrite ? "on" : "off");
+    o << "\n转换模式：" << (req.mode == Mode::Speech ? "speech（讲话 V2）" :
+                              req.mode == Mode::Singing ? "singing（歌声 V1）" : "RVC")
+      << "\n源音频：" << as_string(req.source)
+      << "\n输出音频：" << as_string(req.output)
+      << "\nPython 运行环境：" << (cfg.python.empty() ? "自动使用仓库内置便携 Python" : as_string(cfg.python))
+      << "\n转换超时：" << cfg.timeout.count() / 1000 << " 秒"
+      << "\n允许覆盖输出：" << (req.overwrite ? "是（on）" : "否（off）");
     if (menu_ == ConsoleMenu::SeedVC) {
-        o << "\nSeed-VC root: " << (cfg.seed_vc_root.empty() ? "third_party/seed-vc (bundled)" : as_string(cfg.seed_vc_root))
-          << "\nTarget reference: " << as_string(req.target)
-          << "\nDiffusion steps: " << req.diffusion_steps
-           << "\nSeed-VC V2 CFM: " << as_string(req.seed_cfm_model)
-           << "\nSeed-VC V2 AR: " << as_string(req.seed_ar_model)
-           << "\nTraining dataset: " << as_string(seed_training.dataset)
-           << "\nTrain name: " << seed_training.name
-           << "\nMax steps: " << seed_training.steps
-           << " | Device: " << seed_training.device;
+        o << "\nSeed-VC 源码目录：" << (cfg.seed_vc_root.empty() ?
+                                          "仓库内置 third_party/seed-vc" : as_string(cfg.seed_vc_root))
+          << "\n参考音频：" << as_string(req.target)
+          << "\n扩散推理步数：" << req.diffusion_steps
+          << "\nSeed-VC V2 CFM 权重：" << as_string(req.seed_cfm_model)
+          << "\nSeed-VC V2 AR 权重：" << as_string(req.seed_ar_model)
+          << "\n训练素材目录：" << as_string(seed_training.dataset)
+          << "\n训练模型名称：" << seed_training.name
+          << "\n最大微调步数：" << seed_training.steps
+          << " | 训练设备：" << seed_training.device;
     } else {
-        o << "\nRVC root: " << (training_configuration.rvc_root.empty() ? "third_party/rvc (bundled)" : as_string(training_configuration.rvc_root))
-          << "\nTrained model: " << as_string(req.trained_model)
-          << "\nDataset: " << as_string(training.dataset)
-          << "\nTrain name: " << training.name
-          << "\nEpochs: " << training.epochs << " | Batch: " << training.batch_size
-          << " | Workers: " << training.workers
-          << "\nDevice: " << training.device << " GPU: " << training.gpu
-          << " | Index: " << (training.build_index ? "on" : "off");
+        o << "\nRVC 源码目录：" << (training_configuration.rvc_root.empty() ?
+                                     "仓库内置 third_party/rvc" : as_string(training_configuration.rvc_root))
+          << "\n当前加载的模型：" << as_string(req.trained_model)
+          << "\n训练素材目录：" << as_string(training.dataset)
+          << "\n训练模型名称：" << training.name
+          << "\n训练轮数：" << training.epochs
+          << " | 批大小：" << (training.batch_size == 0 ? "自动（auto）" : std::to_string(training.batch_size))
+          << " | 加载线程数：" << (training.workers == 0 ? "自动（auto）" : std::to_string(training.workers))
+          << "\n训练设备：" << training.device
+          << " | GPU 编号：" << (training.gpu < 0 ? "自动（auto）" : std::to_string(training.gpu))
+          << " | 生成索引：" << (training.build_index ? "是（on）" : "否（off）");
     }
     return o.str();
+}
+
+// 枚举参数的候选值仍使用命令行约定的英文，右侧添加中文解释。
+std::string suggestion_label(const std::string& key, const std::string& value) {
+    if (key == "/engine")
+        return value == "speech" ? "speech（普通讲话，V2）" : "singing（歌声，V1）";
+    if (key == "/device") {
+        if (value == "auto") return "auto（自动检测训练设备）";
+        return value == "cuda" ? "cuda（NVIDIA CUDA 显卡）" : "cpu（处理器）";
+    }
+    if (key == "/offline")
+        return value == "on" ? "on（仅使用本地权重）" : "off（允许下载缺失权重）";
+    if (key == "/overwrite")
+        return value == "on" ? "on（允许覆盖输出文件）" : "off（禁止覆盖输出文件）";
+    if (key == "/index")
+        return value == "on" ? "on（生成检索索引）" : "off（不生成索引）";
+    return value;
 }
 
 std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const {
@@ -437,8 +490,11 @@ std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const
         const std::vector<std::string> choices = key == "/engine" ?
             std::vector<std::string>{"speech", "singing"} : key == "/device" ?
             std::vector<std::string>{"auto", "cuda", "cpu"} : std::vector<std::string>{"on", "off"};
-        for (const auto& c : choices) if (starts(c, prefix)) result.push_back({replacement(key, c), c});
+        for (const auto& c : choices)
+            if (starts(c, prefix))
+                result.push_back({replacement(key, c), suggestion_label(key, c)});
     } else if (key == "/load-model") {
+        // 仅提示当前引擎已登记的模型，防止 RVC 与 Seed-VC 的模型混用。
         try {
             for (const auto& model : read_model_registry(default_model_registry(),
                      menu_ == ConsoleMenu::SeedVC ? "seed-vc" : "rvc")) {
@@ -447,6 +503,7 @@ std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const
             }
         } catch (const fs::filesystem_error&) {}
     } else if (is_path(key)) {
+        // 路径自动补全只显示用户可访问的文件和目录；补全后保留 /命令格式。
         try {
             fs::path input = prefix.empty() ? fs::path(".") : as_path(prefix);
             fs::path dir = input.has_parent_path() ? input.parent_path() : fs::path(".");

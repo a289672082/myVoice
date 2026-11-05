@@ -45,7 +45,11 @@ int main() {
         check(!shell.execute("/source some.wav").success, "main must reject engine options");
         check(!shell.set_option("/source", "some.wav").success, "set_option must check menu too");
         check(shell.execute("/help").message.find("/Seed-VC") != std::string::npos, "main help");
-        check(shell.execute("/show").message.find("Main") != std::string::npos, "main show");
+        check(shell.execute("/help").message.find("中文操作帮助") != std::string::npos,
+              "main menu Chinese help");
+        check(shell.execute("/help").message.find("进入 RVC 模型训练") != std::string::npos,
+              "main menu Chinese command description");
+        check(shell.execute("/show").message.find("主菜单") != std::string::npos, "main show localized");
         check(!shell.execute("/back").success, "no /back in main");
         check(!shell.execute("/Seed-VC argument").success, "navigation takes no arguments");
 
@@ -53,6 +57,11 @@ int main() {
         check(shell.menu() == ConsoleMenu::SeedVC, "must be in Seed-VC menu");
         check(contains(shell.suggestions("/con"), "/convert"), "Seed-VC conversion completion");
         check(contains(shell.suggestions("/engine s"), "/engine speech"), "Seed-VC engine suggestion");
+        const auto seed_hints = shell.suggestions("/engine s");
+        check(std::any_of(seed_hints.begin(), seed_hints.end(), [](const myvoice::Suggestion& hint) {
+                  return hint.replacement == "/engine speech" &&
+                         hint.display.find("讲话") != std::string::npos;
+              }), "Seed-VC autocomplete must explain V2 in Chinese");
         check(contains(shell.suggestions("/tr"), "/train"), "Seed-VC V2 fine-tune completion");
         check(shell.execute("/dataset seed_speech").success, "Seed dataset");
         check(shell.execute("/device auto").success, "Seed hardware auto");
@@ -80,12 +89,14 @@ int main() {
         check(shell.execute("/overwrite on").success && shell.conversion_request().overwrite, "Seed-VC overwrite");
         check(shell.conversion_request().source.filename() == "my test file.wav", "source lost spaces");
         check(shell.conversion_request().mode == myvoice::Mode::Singing, "singing mode not set");
-        check(shell.execute("/show").message.find("Target reference") != std::string::npos, "Seed-VC summary");
+        check(shell.execute("/show").message.find("参考音频：") != std::string::npos, "Seed-VC localized summary");
         check(shell.execute("/convert").action == CommandAction::Convert, "Seed-VC conversion action");
         check(!shell.execute("/steps abc").success, "reject invalid integer");
         check(!shell.execute("/timeout 0").success, "reject bad timeout");
         check(!shell.execute("/source \"unclosed").success, "reject unclosed quote");
         check(!shell.execute("source xxx").success, "reject commands without slash");
+        check(shell.execute("source xxx").message.find("必须以 / 开头") != std::string::npos,
+              "command errors must be in Chinese");
         check(!shell.execute("/source one two").success, "reject ambiguous path");
 
         check(shell.execute("/back").success && shell.menu() == ConsoleMenu::Main, "return to main");
@@ -93,6 +104,11 @@ int main() {
         check(contains(shell.suggestions("/tr"), "/train"), "RVC training completion");
         check(contains(shell.suggestions("/device c"), "/device cuda"), "RVC device completion");
         check(contains(shell.suggestions("/device a"), "/device auto"), "RVC GPU auto completion");
+        const auto rvc_hints = shell.suggestions("/device a");
+        check(std::any_of(rvc_hints.begin(), rvc_hints.end(), [](const myvoice::Suggestion& hint) {
+                  return hint.replacement == "/device auto" &&
+                         hint.display.find("自动") != std::string::npos;
+              }), "RVC autocomplete must explain auto in Chinese");
         check(!contains(shell.suggestions("/engine"), "/engine singing"), "RVC menu should hide Seed-VC engine");
         check(!shell.execute("/engine singing").success, "RVC rejects Seed-VC engine");
         check(!shell.execute("/target target.wav").success, "RVC must reject target reference");
@@ -121,7 +137,7 @@ int main() {
         check(shell.execute("/train-legacy").action == CommandAction::Train &&
               !shell.active_training().smart, "RVC legacy compatibility");
         check(shell.execute("/convert").action == CommandAction::Convert, "RVC conversion action");
-        check(shell.execute("/show").message.find("Train name:") != std::string::npos, "RVC summary");
+        check(shell.execute("/show").message.find("训练模型名称：") != std::string::npos, "RVC localized summary");
         check(shell.conversion_configuration().python == std::filesystem::path("rvc_python"), "RVC Python not applied");
 
         check(shell.execute("/back").success, "back from RVC");
