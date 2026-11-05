@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ENGINE="$1"
+ENGINE="all"
+if test "$#" -ge 1; then ENGINE="$1"; fi
 TAG="portable-python-v1"
-if test "$#" -eq 0; then ENGINE="all"; fi
 if test "$#" -ge 2; then TAG="$2"; fi
 case "$ENGINE" in
   all) ENGINES="seed-vc rvc" ;;
