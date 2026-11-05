@@ -292,8 +292,9 @@ CommandResult CommandShell::execute(const std::string& line) {
             throw std::invalid_argument(key + " is unavailable in " + menu_name() + "; use /help");
         const bool no_value = normalized == "/seed-vc" || normalized == "/rvc" ||
             normalized == "/back" || normalized == "/help" || normalized == "/show" ||
-            normalized == "/convert" || normalized == "/train" || normalized == "/train-log" ||
-            normalized == "/quit";
+            normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
+            normalized == "/train-log" || normalized == "/models" ||
+            normalized == "/quality-report" || normalized == "/quit";
         if (no_value) {
             if (args.size() != 1) throw std::invalid_argument(key + " takes no arguments");
             if (normalized == "/seed-vc") { menu_ = ConsoleMenu::SeedVC; return {CommandAction::None, "已进入 Seed-VC 菜单。输入 /help 查看专属命令。", true}; }
@@ -303,11 +304,43 @@ CommandResult CommandShell::execute(const std::string& line) {
             if (normalized == "/show") return {CommandAction::None, summary(), true};
             if (normalized == "/quit") return {CommandAction::Quit, "Goodbye", true};
             if (normalized == "/convert") return {CommandAction::Convert, "Converting with " + menu_name() + "...", true};
-            if (normalized == "/train") return {CommandAction::Train, "Training RVC V2...", true};
+            if (normalized == "/train" || normalized == "/train-legacy") {
+                auto& tr = menu_ == ConsoleMenu::SeedVC ? seed_training : training;
+                tr.smart = normalized == "/train";
+                return {CommandAction::Train, tr.smart ? "启动智能训练/微调..." :
+                        "启动旧版 RVC 手动训练...", true};
+            }
+            if (normalized == "/models") {
+                const auto models = read_model_registry(default_model_registry(),
+                    menu_ == ConsoleMenu::SeedVC ? "seed-vc" : "rvc");
+                if (models.empty())
+                    return {CommandAction::None, "暂无已登记模型，请先使用 /train", true};
+                std::ostringstream result;
+                for (const auto& model : models)
+                    result << model.name << "  [" << model.engine << "]  "
+                           << as_string(model.primary) << '\n';
+                return {CommandAction::None, result.str(), true};
+            }
+            if (normalized == "/quality-report") {
+                const bool seed = menu_ == ConsoleMenu::SeedVC;
+                const auto& tc = seed ? seed_training_configuration : training_configuration;
+                const auto& tr = seed ? seed_training : training;
+                const auto root = resolve_engine_root(
+                    seed ? tc.seed_vc_root : tc.rvc_root,
+                    seed ? "seed-vc" : "rvc",
+                    seed ? "train_v2.py" : "train/train.py");
+                return {CommandAction::None, as_string(root /
+                    (seed ? "runs" : "logs") / tr.name / "myvoice_quality_report.json"), true};
+            }
             if (normalized == "/train-log") {
+                const bool seed = menu_ == ConsoleMenu::SeedVC;
+                const auto& tc = seed ? seed_training_configuration : training_configuration;
+                const auto& tr = seed ? seed_training : training;
                 const fs::path log_path = resolve_engine_root(
-                    training_configuration.rvc_root, "rvc", "train/train.py") / "logs" /
-                                          training.name / "myvoice_train.log";
+                    seed ? tc.seed_vc_root : tc.rvc_root,
+                    seed ? "seed-vc" : "rvc",
+                    seed ? "train_v2.py" : "train/train.py") /
+                    (seed ? "runs" : "logs") / tr.name / "myvoice_train.log";
                 std::ifstream input(log_path, std::ios::binary);
                 if (!input) return {CommandAction::None, "No training log yet: " + as_string(log_path), false};
                 input.seekg(0, std::ios::end);
@@ -334,7 +367,9 @@ std::string CommandShell::help() const {
     else
         out << "输入 /back 返回主菜单；文件路径含空格时用双引号包围。\n";
     if (menu_ == ConsoleMenu::SeedVC)
-        out << "Seed-VC 当前仅支持零样本语音/歌声转换，不支持在本菜单训练 RVC 权重。\n";
+        out << "Seed-VC V2 专属 CFM 微调：/train，/models，/load-model 名称。\n";
+    else if (menu_ == ConsoleMenu::Rvc)
+        out << "RVC /train 为一键智能训练；/train-legacy 是旧手动流水线。\n";
     return out.str();
 }
 
