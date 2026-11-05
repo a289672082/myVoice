@@ -41,6 +41,8 @@ class VoiceTrainer {
 public:
     explicit VoiceTrainer(TrainingConfiguration configuration);
     [[nodiscard]] TrainingResult train(const TrainingRequest& request) const;
+    // 复制便携 CPU 环境到独立 -gpu 目录，验证 CUDA 后才启用；dry_run 不下载。
+    [[nodiscard]] std::filesystem::path prepare_gpu(TrainingEngine engine, bool dry_run = false) const;
 private:
     TrainingConfiguration configuration_;
 };

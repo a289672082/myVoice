@@ -57,6 +57,8 @@ constexpr CommandInfo kSeed[] = {
     {"/train-timeout", "/train-timeout <秒>", "训练超时"},
     {"/train", "/train", "自动质检录音、准备权重并微调 Seed-VC V2 CFM"},
     {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
+    {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "查看微调日志"},
     {"/quality-report", "/quality-report", "查看音频质检报告的保存路径"},
         // 模型管理：按名称加载已登记模型；Tab 可自动补全已注册的模型名。
@@ -94,6 +96,8 @@ constexpr CommandInfo kRvc[] = {
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
     {"/train", "/train", "自动检查录音与权重、选择显卡并训练 RVC"},
     {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
+    {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
         // 模型管理：自动读取训练结束后登记的 RVC 模型清单。
     {"/models", "/models", "列出已经登记的 RVC 训练模型"},
@@ -391,7 +395,8 @@ CommandResult CommandShell::execute(const std::string& line) {
             normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
             normalized == "/train-log" || normalized == "/models" ||
             normalized == "/quality-report" || normalized == "/unload-model" ||
-            normalized == "/train-wizard" || normalized == "/quit";
+            normalized == "/train-wizard" || normalized == "/gpu-check" ||
+            normalized == "/gpu-setup" || normalized == "/quit";
         if (no_value) {
             if (args.size() != 1) throw std::invalid_argument(key + " 不需要附加参数");
             if (normalized == "/seed-vc") { menu_ = ConsoleMenu::SeedVC; return {CommandAction::None, "已进入 Seed-VC 菜单。输入 /help 查看专属命令。", true}; }
@@ -401,6 +406,11 @@ CommandResult CommandShell::execute(const std::string& line) {
             if (normalized == "/show") return {CommandAction::None, summary(), true};
             if (normalized == "/quit") return {CommandAction::Quit, "已退出程序", true};
             if (normalized == "/convert") return {CommandAction::Convert, "正在使用 " + menu_name() + " 转换声音...", true};
+            if (normalized == "/gpu-check")
+                return {CommandAction::CheckGpu, "正在检查显卡驱动，不会修改环境...", true};
+            if (normalized == "/gpu-setup")
+                return {CommandAction::PrepareGpu,
+                        "准备独立 CUDA 环境（需联网下载大量文件；不会覆盖 CPU 环境）...", true};
             if (normalized == "/train-wizard") {
                 wizard_request_ = active_training();
                 wizard_request_.smart = true;
@@ -481,12 +491,12 @@ std::string CommandShell::help() const {
         out << "\n使用顺序：先输入 /Seed-VC 或 /RVC，再进行声音转换或模型训练。\n";
     } else if (menu_ == ConsoleMenu::SeedVC) {
         out << "\n讲话转换示例：/engine speech → /source → /target → /output → /convert\n";
-        out << "新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练\n";
+        out << "新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练；有 NVIDIA 显卡可先 /gpu-check → /gpu-setup\n";
         out << "V2 微调示例：/dataset → /train-name → /train → /models → /load-model\n";
         out << "说明：/engine singing 使用 V1 歌声模型，不能加载 V2 CFM/AR 检查点。\n";
         out << "输入 /back 返回主菜单；带空格的文件路径请用双引号包围。\n";
     } else {
-        out << "\n新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练\n";
+        out << "\n新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练；有 NVIDIA 显卡可先 /gpu-check → /gpu-setup\n";
         out << "高级用户：/dataset → /train-name → /device auto → /train\n";
         out << "使用模型示例：/models → /load-model → /source → /output → /convert\n";
         out << "说明：/train-legacy 为旧版手工训练模式，/offline on 禁止联网下载权重。\n";

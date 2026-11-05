@@ -10,7 +10,7 @@ namespace myvoice {
 // 【兼容要求】对外命令仍采用 /英文名称，控制台文案、解释与提示使用中文。
 enum class ConsoleMenu { Main, SeedVC, Rvc };
 // 命令只描述用户意图，实际耗时操作由 FTXUI/CLI 在工作线程或批处理内执行。
-enum class CommandAction { None, Convert, Train, Quit };
+enum class CommandAction { None, Convert, Train, PrepareGpu, CheckGpu, Quit };
 struct CommandResult {
     CommandAction action = CommandAction::None;
     std::string message;

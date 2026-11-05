@@ -9,6 +9,8 @@
 #include <ftxui/dom/elements.hpp>
 #include <algorithm>
 #include <atomic>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -56,7 +58,10 @@ int run_tui() {
             else app.Exit();
             return;
         }
-        if (result.action == myvoice::CommandAction::Convert || result.action == myvoice::CommandAction::Train) {
+        if (result.action == myvoice::CommandAction::Convert ||
+            result.action == myvoice::CommandAction::Train ||
+            result.action == myvoice::CommandAction::PrepareGpu ||
+            result.action == myvoice::CommandAction::CheckGpu) {
             if (busy.exchange(true)) {
                 log_message("已有转换/训练任务正在运行，请等待完成");
                 return;
@@ -66,17 +71,30 @@ int run_tui() {
             config.capture_child_output = true;  // Python stdout/stderr 不得破坏 FTXUI 画面
             const auto request = shell.conversion_request();
             const bool is_training = result.action == myvoice::CommandAction::Train;
+            const bool is_gpu = result.action == myvoice::CommandAction::PrepareGpu ||
+                                result.action == myvoice::CommandAction::CheckGpu;
+            const bool gpu_check_only = result.action == myvoice::CommandAction::CheckGpu;
             const auto training = shell.active_training();
             const auto training_config = shell.active_training_configuration();
             const auto engine_name = shell.menu_name();
-            current_job = is_training ? "训练中" : "转换中";
+            current_job = is_training ? "训练中" : is_gpu ? "检查/配置 GPU" : "转换中";
             log_message(is_training ? "正在后台训练 " + engine_name + "：" + training.name +
-                " （输入 /train-log 查看日志，/quality-report 查看质检）" :
+                " （输入 /train-status 查看进度，/train-log 查看日志）" :
+                is_gpu ? "GPU 操作正在后台进行；完成后显示检查结果..." :
                 "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
-            worker = std::thread([&, config, request, is_training, training, training_config] {
+            worker = std::thread([&, config, request, is_training, is_gpu, gpu_check_only, training, training_config] {
                 std::string outcome;
                 try {
-                    if (is_training) {
+                    if (is_gpu) {
+                        const auto logfile = myvoice::VoiceTrainer(training_config)
+                            .prepare_gpu(training.engine, gpu_check_only);
+                        std::ifstream file(logfile, std::ios::binary);
+                        std::string contents{std::istreambuf_iterator<char>(file),
+                                             std::istreambuf_iterator<char>()};
+                        if (contents.size() > 2800) contents = contents.substr(contents.size() - 2800);
+                        outcome = std::string(gpu_check_only ? "GPU 检查完成：\n" :
+                            "GPU 环境准备成功，后续训练将自动选择已验证 GPU Python：\n") + contents;
+                    } else if (is_training) {
                         const auto result = myvoice::VoiceTrainer(training_config).train(training);
 #ifdef _WIN32
                         outcome = "训练完成: " + result.experiment_dir.u8string();

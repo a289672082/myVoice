@@ -82,6 +82,9 @@ int main() {
                          hint.display.find("讲话") != std::string::npos;
               }), "Seed-VC autocomplete must explain V2 in Chinese");
         check(contains(shell.suggestions("/tr"), "/train"), "Seed-VC V2 fine-tune completion");
+        check(contains(shell.suggestions("/train-w"), "/train-wizard"), "Seed wizard command");
+        check(shell.execute("/gpu-check").action == CommandAction::CheckGpu, "Seed GPU check action");
+        check(shell.execute("/gpu-setup").action == CommandAction::PrepareGpu, "Seed GPU setup action");
         check(shell.execute("/dataset seed_speech").success, "Seed dataset");
         check(shell.execute("/device auto").success, "Seed hardware auto");
         check(shell.execute("/train-steps 500").success && shell.seed_training.steps == 500, "Seed fine-tune steps");
@@ -121,6 +124,8 @@ int main() {
         check(shell.execute("/back").success && shell.menu() == ConsoleMenu::Main, "return to main");
         check(shell.execute("/rvc").success && shell.menu() == ConsoleMenu::Rvc, "enter RVC case-insensitively");
         check(contains(shell.suggestions("/tr"), "/train"), "RVC training completion");
+        check(shell.execute("/gpu-check").action == CommandAction::CheckGpu, "RVC GPU check action");
+        check(shell.execute("/gpu-setup").action == CommandAction::PrepareGpu, "RVC GPU setup action");
         check(contains(shell.suggestions("/device c"), "/device cuda"), "RVC device completion");
         check(contains(shell.suggestions("/device a"), "/device auto"), "RVC GPU auto completion");
         const auto rvc_hints = shell.suggestions("/device a");
