@@ -49,7 +49,8 @@ int run(const std::vector<std::string>& args) {
         if (key == "/Seed-VC" || key == "/seed-vc" || key == "/RVC" || key == "/rvc" ||
             key == "/back" || key == "/help" || key == "/show" ||
             key == "/convert" || key == "/train" || key == "/train-legacy" ||
-            key == "/train-log" || key == "/models" || key == "/quality-report") {
+            key == "/train-log" || key == "/models" || key == "/quality-report" ||
+            key == "/unload-model") {
             const auto result = shell.execute(key);
             if (!result.success) throw std::invalid_argument(result.message);
             if (is_action) {

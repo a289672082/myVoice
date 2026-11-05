@@ -64,6 +64,8 @@ int main() {
         check(shell.execute("/cfm-model seed_cfm.pth").success, "Seed CFM manual loading");
         check(shell.execute("/ar-model seed_ar.pth").success, "Seed AR manual loading");
         check(shell.execute("/models").success, "Seed models list");
+        check(shell.execute("/unload-model").success &&
+              shell.conversion_request().seed_cfm_model.empty(), "Seed unload fine-tuned model");
         check(!shell.execute("/load-model unknown_name").success, "Unknown Seed model");
         check(!shell.execute("/model model.pth").success, "Seed-VC must reject RVC model");
         check(!shell.execute("/rvc-root path").success, "Seed-VC must reject RVC root");

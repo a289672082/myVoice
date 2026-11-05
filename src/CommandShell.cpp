@@ -50,6 +50,7 @@ constexpr CommandInfo kSeed[] = {
     {"/train-log", "/train-log", "查看微调日志"},
     {"/quality-report", "/quality-report", "查看质检报告"},
     {"/models", "/models", "列出本引擎模型"},
+    {"/unload-model", "/unload-model", "卸载当前微调模型，恢复默认推理"},
     {"/load-model", "/load-model <名称>", "加载微调模型"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
@@ -79,6 +80,7 @@ constexpr CommandInfo kRvc[] = {
     {"/train", "/train", "一键质检/下载预训练权重/自适应训练"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
     {"/models", "/models", "列出已训练模型"},
+    {"/unload-model", "/unload-model", "清除当前 RVC 模型选择"},
     {"/load-model", "/load-model <名称>", "加载已登记模型"},
     {"/quality-report", "/quality-report", "查看音频质检报告"},
     {"/offline", "/offline on|off", "禁止自动下载模型"},
@@ -294,7 +296,8 @@ CommandResult CommandShell::execute(const std::string& line) {
             normalized == "/back" || normalized == "/help" || normalized == "/show" ||
             normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
             normalized == "/train-log" || normalized == "/models" ||
-            normalized == "/quality-report" || normalized == "/quit";
+            normalized == "/quality-report" || normalized == "/unload-model" ||
+            normalized == "/quit";
         if (no_value) {
             if (args.size() != 1) throw std::invalid_argument(key + " takes no arguments");
             if (normalized == "/seed-vc") { menu_ = ConsoleMenu::SeedVC; return {CommandAction::None, "已进入 Seed-VC 菜单。输入 /help 查看专属命令。", true}; }
@@ -309,6 +312,13 @@ CommandResult CommandShell::execute(const std::string& line) {
                 tr.smart = normalized == "/train";
                 return {CommandAction::Train, tr.smart ? "启动智能训练/微调..." :
                         "启动旧版 RVC 手动训练...", true};
+            }
+            if (normalized == "/unload-model") {
+                if (menu_ == ConsoleMenu::SeedVC) {
+                    seed_request_.seed_cfm_model.clear();
+                    seed_request_.seed_ar_model.clear();
+                } else rvc_request_.trained_model.clear();
+                return {CommandAction::None, "已卸载当前模型", true};
             }
             if (normalized == "/models") {
                 const auto models = read_model_registry(default_model_registry(),
