@@ -231,8 +231,7 @@ def prepare_dataset(source: Path, dest: Path, engine: str, *,
                 continue
             output = dest / f"{i:05d}.wav"
             sf.write(output, x, rate, subtype="PCM_16")
-            entry["prepared": str(output)
-            }
+            entry["prepared"] = str(output)
             accepted.append(entry)
             total += metrics["duration_s"]
         except Exception as exc:
