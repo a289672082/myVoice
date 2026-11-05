@@ -194,9 +194,52 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
         if (!allowed(menu_, key))
             throw std::invalid_argument("Command " + command + " is not available in " + menu_name() + "; try /help");
         if (menu_ == ConsoleMenu::Main) throw std::invalid_argument("Choose /Seed-VC or /RVC first");
-        if (key == "/python") {
+        TrainingRequest& tr = menu_ == ConsoleMenu::SeedVC ? seed_training : training;
+        TrainingConfiguration& tc = menu_ == ConsoleMenu::SeedVC ?
+            seed_training_configuration : training_configuration;
+        if (key == "/load-model") {
+            for (const auto& model : read_model_registry(default_model_registry(),
+                    menu_ == ConsoleMenu::SeedVC ? "seed-vc" : "rvc")) {
+                if (model.name != value) continue;
+                if (!fs::is_regular_file(model.primary))
+                    throw std::invalid_argument("模型权重文件不存在: " + as_string(model.primary));
+                if (menu_ == ConsoleMenu::SeedVC) {
+                    if (!model.secondary.empty() && !fs::is_regular_file(model.secondary))
+                        throw std::invalid_argument("Seed-VC AR 权重缺失: " + as_string(model.secondary));
+                    seed_request_.mode = Mode::Speech;
+                    seed_request_.seed_cfm_model = model.primary;
+                    seed_request_.seed_ar_model = model.secondary;
+                } else rvc_request_.trained_model = model.primary;
+                return {CommandAction::None, "已加载 " + model.engine + "/" + model.name, true};
+            }
+            throw std::invalid_argument("未找到已注册模型: " + value + "；请先执行 /models");
+        }
+        if (key == "/dataset") tr.dataset = as_path(value);
+        else if (key == "/train-name") {
+            if (value.empty()) throw std::invalid_argument("训练模型名称不能为空");
+            tr.name = value;
+        } else if (key == "/epochs") tr.epochs = number(value, 1, 10000);
+        else if (key == "/train-steps") tr.steps = number(value, 1, 1000000);
+        else if (key == "/batch") tr.batch_size = value == "auto" ? 0 : number(value, 1, 128);
+        else if (key == "/workers") tr.workers = value == "auto" ? 0 : number(value, 0, 64);
+        else if (key == "/save-every") tr.save_every = number(value, 1, 10000);
+        else if (key == "/gpu") tr.gpu = value == "auto" ? -1 : number(value, 0, 31);
+        else if (key == "/device") {
+            if (value != "auto" && value != "cpu" && value != "cuda")
+                throw std::invalid_argument("/device expects auto|cpu|cuda");
+            tr.device = value;
+        } else if (key == "/offline") {
+            if (value != "on" && value != "off")
+                throw std::invalid_argument("/offline expects on|off");
+            tr.offline = value == "on";
+        } else if (key == "/train-timeout")
+            tc.timeout = std::chrono::seconds(number(value, 1, 86400));
+        else if (key == "/python") {
             const fs::path p = as_path(value);
-            if (menu_ == ConsoleMenu::SeedVC) seed_configuration_.python = p;
+            if (menu_ == ConsoleMenu::SeedVC) {
+                seed_configuration_.python = p;
+                seed_training_configuration.python = p;
+            }
             else { rvc_configuration_.python = p; training_configuration.python = p; }
         } else if (key == "/source") {
             (menu_ == ConsoleMenu::SeedVC ? seed_request_ : rvc_request_).source = as_path(value);
@@ -209,7 +252,11 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
             if (value != "on" && value != "off") throw std::invalid_argument("/overwrite expects on or off");
             (menu_ == ConsoleMenu::SeedVC ? seed_request_ : rvc_request_).overwrite = value == "on";
         } else if (menu_ == ConsoleMenu::SeedVC) {
-            if (key == "/seed-root") seed_configuration_.seed_vc_root = as_path(value);
+            if (key == "/seed-root") {
+                seed_configuration_.seed_vc_root = as_path(value);
+                seed_training_configuration.seed_vc_root = as_path(value);
+            } else if (key == "/cfm-model") seed_request_.seed_cfm_model = as_path(value);
+            else if (key == "/ar-model") seed_request_.seed_ar_model = as_path(value);
             else if (key == "/target") seed_request_.target = as_path(value);
             else if (key == "/engine") {
                 if (value == "speech") seed_request_.mode = Mode::Speech;
@@ -222,22 +269,8 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
                 rvc_configuration_.rvc_root = as_path(value);
                 training_configuration.rvc_root = as_path(value);
             } else if (key == "/model") rvc_request_.trained_model = as_path(value);
-            else if (key == "/dataset") training.dataset = as_path(value);
             else if (key == "/train-script") training_configuration.bridge_script = as_path(value);
-            else if (key == "/train-name") {
-                if (value.empty()) throw std::invalid_argument("Training name must not be empty");
-                training.name = value;
-            } else if (key == "/epochs") training.epochs = number(value, 1, 10000);
-            else if (key == "/batch") training.batch_size = number(value, 1, 128);
-            else if (key == "/save-every") training.save_every = number(value, 1, 10000);
-            else if (key == "/workers") training.workers = number(value, 1, 64);
-            else if (key == "/gpu") training.gpu = number(value, 0, 31);
-            else if (key == "/train-timeout")
-                training_configuration.timeout = std::chrono::seconds(number(value, 1, 86400));
-            else if (key == "/device") {
-                if (value != "cuda" && value != "cpu") throw std::invalid_argument("/device expects cuda or cpu");
-                training.device = value;
-            } else if (key == "/index") {
+            else if (key == "/index") {
                 if (value != "on" && value != "off") throw std::invalid_argument("/index expects on or off");
                 training.build_index = value == "on";
             } else throw std::invalid_argument("Unknown RVC option: " + key);
