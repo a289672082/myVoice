@@ -66,9 +66,13 @@ def main():
         env = dict(os.environ, UV_PYTHON_INSTALL_DIR=str(managed),
                    UV_LINK_MODE="copy", UV_CACHE_DIR=str(tmp / "cache"), UV_NO_PROGRESS="1")
         run(["uv", "python", "install", version], env)
-        candidates = [x for x in managed.iterdir() if x.is_dir() and executable(x).is_file()]
+        # uv creates a minor-version alias (3.10) alongside the real version (3.10.22).
+        # Bundle the actual versioned directory, never duplicate the alias.
+        candidates = [x for x in managed.iterdir() if x.is_dir() and
+                      x.name.startswith("cpython-" + version + ".") and
+                      executable(x).is_file()]
         if len(candidates) != 1:
-            raise RuntimeError(f"Expected a single standalone CPython: {candidates}")
+            raise RuntimeError(f"Expected one actual standalone CPython: {candidates}")
         relative = Path("runtime") / platform / args.engine
         staging = tmp / "staging"
         location = staging / relative
