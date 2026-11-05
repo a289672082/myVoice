@@ -37,6 +37,7 @@ int run_tui() {
     std::string pending_model_name; // 仅由工作线程写入，UI 线程负责真正执行 /load-model
     myvoice::ConsoleMenu pending_model_menu = myvoice::ConsoleMenu::Main;
     std::atomic<bool> busy{false};
+    std::atomic<bool> refresh_active{false};
     std::string current_job;
     std::thread worker;
     std::thread refresh_worker;  // 只负责触发 UI 更新，不直接修改控件。
@@ -104,10 +105,13 @@ int run_tui() {
                 " （输入 /train-status 查看进度，/train-log 查看日志）" :
                 is_gpu ? "GPU 操作正在后台进行；完成后显示检查结果..." :
                 "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
+            // 刷新线程使用独立生命周期标记，避免连续两次训练时由于 busy 再次为
+            // true，使旧刷新线程误以为仍属于新任务而导致 join() 无限等待。
             if (refresh_worker.joinable()) refresh_worker.join();
+            refresh_active = is_training;
             if (is_training) {
                 refresh_worker = std::thread([&] {
-                    while (busy.load()) {
+                    while (refresh_active.load()) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(900));
                         app.PostEvent(Event::Custom);
                     }
@@ -192,6 +196,7 @@ int run_tui() {
                     pending_model_name = std::move(trained_model_name);
                     pending_model_menu = job_menu;
                 }
+                refresh_active = false;
                 busy = false;
                 app.PostEvent(Event::Custom);  // Worker 不直接操作 FTXUI 控件
             });
