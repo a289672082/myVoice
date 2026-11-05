@@ -63,11 +63,12 @@ int run_tui() {
             config.capture_child_output = true;  // Python stdout/stderr 不得破坏 FTXUI 画面
             const auto request = shell.conversion_request();
             const bool is_training = result.action == myvoice::CommandAction::Train;
-            const auto training = shell.training;
-            const auto training_config = shell.training_configuration;
+            const auto training = shell.active_training();
+            const auto training_config = shell.active_training_configuration();
+            const auto engine_name = shell.menu_name();
             current_job = is_training ? "TRAINING" : "CONVERTING";
-            log_message(is_training ? "正在后台训练 RVC：" + training.name +
-                " （进度日志在 RVC/logs/<name>/myvoice_train.log）" :
+            log_message(is_training ? "正在后台训练 " + engine_name + "：" + training.name +
+                " （输入 /train-log 查看日志，/quality-report 查看质检）" :
                 "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
             worker = std::thread([&, config, request, is_training, training, training_config] {
                 std::string outcome;
@@ -76,8 +77,12 @@ int run_tui() {
                         const auto result = myvoice::VoiceTrainer(training_config).train(training);
 #ifdef _WIN32
                         outcome = "训练完成: " + result.experiment_dir.u8string();
+                        if (!result.primary_model.empty())
+                            outcome += " | 已注册: " + result.primary_model.u8string();
 #else
                         outcome = "训练完成: " + result.experiment_dir.string();
+                        if (!result.primary_model.empty())
+                            outcome += " | 已注册: " + result.primary_model.string();
 #endif
                     } else {
                         const auto result = myvoice::VoiceConverter(config).convert(request);
@@ -154,7 +159,7 @@ int run_tui() {
             vbox(std::move(completion)),
             text(shell.menu() == myvoice::ConsoleMenu::Main ?
                 "Enter 执行 | Tab 补全 | /Seed-VC 进入 Seed-VC | /RVC 进入 RVC | /quit 退出" :
-                "Enter 执行 | Tab 补全 | 上下键历史 | /convert 转换 | /back 主菜单 | /help 命令") | dim
+                "Enter 执行 | Tab 补全 | /train 智能训练 | /models 模型列表 | /load-model 加载 | /back 返回") | dim
         }) | border;
     });
     app.Loop(view);
