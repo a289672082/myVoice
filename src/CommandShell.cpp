@@ -1,5 +1,6 @@
 #include "myvoice/CommandShell.h"
 #include "myvoice/EnginePaths.h"
+#include "myvoice/ModelRegistry.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -32,6 +33,24 @@ constexpr CommandInfo kSeed[] = {
     {"/timeout", "/timeout <1..86400>", "推理超时（秒）"},
     {"/overwrite", "/overwrite on|off", "覆盖已有结果"},
     {"/convert", "/convert", "使用 Seed-VC 进行文件转换"},
+    {"/cfm-model", "/cfm-model <模型.pth>", "Seed-VC V2 CFM 微调权重"},
+    {"/ar-model", "/ar-model <模型.pth>", "Seed-VC V2 AR 模型"},
+    {"/dataset", "/dataset <目录>", "训练目标音色素材"},
+    {"/train-name", "/train-name <名称>", "训练模型名称"},
+    {"/train-steps", "/train-steps <1..1000000>", "微调步数"},
+    {"/epochs", "/epochs <1..10000>", "最大训练轮数"},
+    {"/batch", "/batch auto|<1..128>", "自动设置批次"},
+    {"/workers", "/workers auto|<0..64>", "自动设置线程数"},
+    {"/device", "/device auto|cuda|cpu", "训练显卡自动检测"},
+    {"/gpu", "/gpu auto|<0..31>", "GPU 编号"},
+    {"/save-every", "/save-every <1..10000>", "检查点保存间隔"},
+    {"/offline", "/offline on|off", "是否禁止下载权重"},
+    {"/train-timeout", "/train-timeout <秒>", "训练超时"},
+    {"/train", "/train", "一键 Seed-VC V2 CFM 微调"},
+    {"/train-log", "/train-log", "查看微调日志"},
+    {"/quality-report", "/quality-report", "查看质检报告"},
+    {"/models", "/models", "列出本引擎模型"},
+    {"/load-model", "/load-model <名称>", "加载微调模型"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
@@ -49,16 +68,21 @@ constexpr CommandInfo kRvc[] = {
     {"/dataset", "/dataset <目录>", "训练数据目录"},
     {"/train-name", "/train-name <名称>", "训练实验名"},
     {"/epochs", "/epochs <1..10000>", "训练轮数"},
-    {"/batch", "/batch <1..128>", "训练批次"},
+    {"/batch", "/batch auto|<1..128>", "自动批次"},
     {"/save-every", "/save-every <1..10000>", "权重保存间隔"},
-    {"/workers", "/workers <1..64>", "预处理线程数"},
-    {"/device", "/device cuda|cpu", "训练设备"},
-    {"/gpu", "/gpu <0..31>", "CUDA GPU 编号"},
+    {"/workers", "/workers auto|<0..64>", "自动线程数"},
+    {"/device", "/device auto|cuda|cpu", "自动检测训练 GPU"},
+    {"/gpu", "/gpu auto|<0..31>", "自动选择 GPU"},
     {"/index", "/index on|off", "训练后构建 FAISS 索引"},
     {"/train-timeout", "/train-timeout <1..86400>", "训练超时（秒）"},
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
-    {"/train", "/train", "训练 RVC V2 模型"},
+    {"/train", "/train", "一键质检/下载预训练权重/自适应训练"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
+    {"/models", "/models", "列出已训练模型"},
+    {"/load-model", "/load-model <名称>", "加载已登记模型"},
+    {"/quality-report", "/quality-report", "查看音频质检报告"},
+    {"/offline", "/offline on|off", "禁止自动下载模型"},
+    {"/train-legacy", "/train-legacy", "旧版 RVC 手动训练"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
@@ -126,7 +150,8 @@ std::string replacement(const std::string& key, const std::string& path) {
 }
 bool is_path(const std::string& c) {
     return c == "/source" || c == "/target" || c == "/output" || c == "/seed-root" || c == "/python" ||
-           c == "/rvc-root" || c == "/dataset" || c == "/train-script" || c == "/model";
+           c == "/rvc-root" || c == "/dataset" || c == "/train-script" || c == "/model" ||
+           c == "/cfm-model" || c == "/ar-model";
 }
 bool allowed(ConsoleMenu menu, const std::string& key) {
     const auto set = command_set(menu);
@@ -139,7 +164,20 @@ std::string menu_label(ConsoleMenu menu) {
 }
 }  // namespace
 
-CommandShell::CommandShell() { rvc_request_.mode = Mode::Rvc; }
+CommandShell::CommandShell() {
+    rvc_request_.mode = Mode::Rvc;
+    seed_training.engine = TrainingEngine::SeedVC;
+    seed_training.name = "seed_voice";
+    seed_training.save_every = 200;
+}
+TrainingRequest CommandShell::active_training() const {
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select an engine");
+    return menu_ == ConsoleMenu::SeedVC ? seed_training : training;
+}
+TrainingConfiguration CommandShell::active_training_configuration() const {
+    if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select an engine");
+    return menu_ == ConsoleMenu::SeedVC ? seed_training_configuration : training_configuration;
+}
 
 std::string CommandShell::menu_name() const { return menu_label(menu_); }
 const Configuration& CommandShell::conversion_configuration() const {

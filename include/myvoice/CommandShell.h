@@ -24,9 +24,13 @@ class CommandShell {
 public:
     CommandShell();
 
-    // 训练目前仅由 RVC 提供。Seed-VC 专属菜单仍然只开放零样本推理。
+    // RVC 和 Seed-VC 训练参数独立，Seed-VC V2 专属微调支持自动注册和加载。
     TrainingRequest training;
     TrainingConfiguration training_configuration;
+    TrainingRequest seed_training;
+    TrainingConfiguration seed_training_configuration;
+    [[nodiscard]] TrainingRequest active_training() const;
+    [[nodiscard]] TrainingConfiguration active_training_configuration() const;
 
     [[nodiscard]] ConsoleMenu menu() const noexcept { return menu_; }
     [[nodiscard]] std::string menu_name() const;
