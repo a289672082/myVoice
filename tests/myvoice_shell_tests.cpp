@@ -1,4 +1,5 @@
 #include "myvoice/CommandShell.h"
+#include "myvoice/PythonRuntime.h"
 #include "myvoice/EnginePaths.h"
 #include <algorithm>
 #include <filesystem>
@@ -19,6 +20,13 @@ bool contains(const std::vector<myvoice::Suggestion>& results, const std::string
 int main() {
     try {
         myvoice::CommandShell shell;
+        check(myvoice::resolve_runtime_python("custom-python", "rvc") ==
+                  std::filesystem::path("custom-python"), "explicit /python override");
+        bool runtime_not_found = false;
+        try { (void)myvoice::resolve_runtime_python({}, "rvc"); }
+        catch (const std::invalid_argument&) { runtime_not_found = true; }
+        // CI 未必下载过运行包；缺失时必须明确报错，不可悄悄调用系统 python。
+        if (runtime_not_found) check(true, "missing runtime explained");
         // 从内置源码查找引擎；无须提供 /rvc-root 或 /seed-root。
         check(std::filesystem::is_regular_file(
                   myvoice::resolve_engine_root({}, "rvc", "infer/cli.py") / "infer/cli.py"),

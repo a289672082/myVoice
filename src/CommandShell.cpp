@@ -276,7 +276,7 @@ std::string CommandShell::summary() const {
     o << "\nMode: " << (req.mode == Mode::Speech ? "speech" : req.mode == Mode::Singing ? "singing" : "rvc")
       << "\nSource: " << as_string(req.source)
       << "\nOutput: " << as_string(req.output)
-      << "\nPython: " << as_string(cfg.python)
+      << "\nPython: " << (cfg.python.empty() ? "[auto: bundled portable runtime]" : as_string(cfg.python))
       << "\nTimeout: " << cfg.timeout.count() / 1000 << "s"
       << "\nOverwrite: " << (req.overwrite ? "on" : "off");
     if (menu_ == ConsoleMenu::SeedVC) {
