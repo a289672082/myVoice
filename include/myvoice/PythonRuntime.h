@@ -23,10 +23,13 @@ inline std::filesystem::path resolve_runtime_python(
     const fs::path relative = fs::path("runtime") / "linux-x64" / engine / "bin" / "python3";
 #endif
     // 用户执行 /gpu-setup 并通过真实 GPU 分配测试后，才优先使用独立的 GPU 环境。
-    const fs::path gpu_root = relative.parent_path().parent_path() / (engine + "-gpu");
 #ifdef _WIN32
+    const fs::path gpu_root = relative.parent_path().parent_path() / (engine + "-gpu");
     const fs::path gpu_python = gpu_root / "python.exe";
 #else
+    // Linux 多一层 bin/；必须回到平台根目录，否则会误查 rvc/rvc-gpu。
+    const fs::path gpu_root = relative.parent_path().parent_path().parent_path() /
+                              (engine + "-gpu");
     const fs::path gpu_python = gpu_root / "bin" / "python3";
 #endif
     std::vector<fs::path> anchors;
