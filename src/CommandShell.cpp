@@ -12,79 +12,94 @@
 namespace myvoice {
 namespace {
 namespace fs = std::filesystem;
+// 每条命令包含：固定的 /英文命令名、用法示例、面向用户的中文说明。
+// 命令名保持不变，以兼容既有脚本和 Tab 自动补全。
 struct CommandInfo { const char* name; const char* usage; const char* description; };
+// 【主菜单】只允许选择引擎、查看帮助和退出，不提供训练/转换指令。
 constexpr CommandInfo kMain[] = {
-    {"/Seed-VC", "/Seed-VC", "进入 Seed-VC 零样本变声菜单"},
-    {"/RVC", "/RVC", "进入 RVC 训练和变声菜单"},
-    {"/help", "/help", "查看当前菜单命令"},
-    {"/show", "/show", "查看当前菜单状态"},
-    {"/quit", "/quit", "退出"},
+    {"/Seed-VC", "/Seed-VC", "进入 Seed-VC 语音转换及 V2 微调子菜单"},
+    {"/RVC", "/RVC", "进入 RVC 模型训练和语音转换子菜单"},
+    {"/help", "/help", "显示当前菜单的中文命令帮助"},
+    {"/show", "/show", "查看当前菜单及已设置参数"},
+    {"/quit", "/quit", "退出程序"},
 };
+// 【Seed-VC 子菜单】speech 使用 V2 推理/CFM 微调；singing 使用 V1 歌声模型。
+// 两种模式不能混用检查点，Seed-VC 也不能直接加载 RVC 训练权重。
 constexpr CommandInfo kSeed[] = {
+    // 基本设置：帮助、状态、可选的 Python 解释器与源码目录。
     {"/help", "/help", "查看 Seed-VC 命令"},
     {"/show", "/show", "显示 Seed-VC 配置"},
     {"/python", "/python <Python路径>", "Seed-VC Python 解释器"},
     {"/seed-root", "/seed-root <目录>", "Seed-VC 所在目录"},
-    {"/source", "/source <音频文件>", "原始声音文件"},
-    {"/target", "/target <音频文件>", "目标音色参考录音"},
+    // 语音转换：先设置源音频、参考音频和输出文件，再执行 /convert。
+    {"/source", "/source <音频文件>", "设置需要转换的源音频"},
+    {"/target", "/target <音频文件>", "设置目标音色参考录音（V2 微调后仍需提供）"},
     {"/output", "/output <结果.wav>", "输出文件"},
-    {"/engine", "/engine speech|singing", "普通讲话或歌声模型"},
-    {"/steps", "/steps <1..200>", "扩散推理步数"},
+    {"/engine", "/engine speech|singing", "选择模式：speech=讲话 V2，singing=歌声 V1"},
+    {"/steps", "/steps <1..200>", "设置扩散推理步数（越大通常越慢）"},
     {"/timeout", "/timeout <1..86400>", "推理超时（秒）"},
-    {"/overwrite", "/overwrite on|off", "覆盖已有结果"},
+    {"/overwrite", "/overwrite on|off", "是否允许覆盖已有输出：on=允许，off=禁止"},
     {"/convert", "/convert", "使用 Seed-VC 进行文件转换"},
-    {"/cfm-model", "/cfm-model <模型.pth>", "Seed-VC V2 CFM 微调权重"},
-    {"/ar-model", "/ar-model <模型.pth>", "Seed-VC V2 AR 模型"},
-    {"/dataset", "/dataset <目录>", "训练目标音色素材"},
+        // V2 微调模型加载：CFM/AR 只能供 V2 speech 使用，不能用于 V1 singing。
+    {"/cfm-model", "/cfm-model <模型.pth>", "手工指定 Seed-VC V2 微调后的 CFM 权重"},
+    {"/ar-model", "/ar-model <模型.pth>", "手工指定 Seed-VC V2 的 AR 权重"},
+        // 智能微调：指定目标音色素材目录和实验名称；自动检查权重、GPU 和录音质量。
+    {"/dataset", "/dataset <目录>", "设置用于训练的目标音色录音目录"},
     {"/train-name", "/train-name <名称>", "训练模型名称"},
-    {"/train-steps", "/train-steps <1..1000000>", "微调步数"},
+    {"/train-steps", "/train-steps <1..1000000>", "指定 Seed-VC V2 微调最大训练步数"},
     {"/epochs", "/epochs <1..10000>", "最大训练轮数"},
-    {"/batch", "/batch auto|<1..128>", "自动设置批次"},
-    {"/workers", "/workers auto|<0..64>", "自动设置线程数"},
-    {"/device", "/device auto|cuda|cpu", "训练显卡自动检测"},
-    {"/gpu", "/gpu auto|<0..31>", "GPU 编号"},
+    {"/batch", "/batch auto|<1..128>", "训练批大小：auto=按设备显存自动选择"},
+    {"/workers", "/workers auto|<0..64>", "数据加载线程数：auto=自动配置"},
+    {"/device", "/device auto|cuda|cpu", "训练设备：auto=自动检测，cuda=显卡，cpu=处理器"},
+    {"/gpu", "/gpu auto|<0..31>", "指定显卡序号：auto=自动选择"},
     {"/save-every", "/save-every <1..10000>", "检查点保存间隔"},
-    {"/offline", "/offline on|off", "是否禁止下载权重"},
+    {"/offline", "/offline on|off", "权重下载：on=离线不下载，off=允许自动下载"},
     {"/train-timeout", "/train-timeout <秒>", "训练超时"},
-    {"/train", "/train", "一键 Seed-VC V2 CFM 微调"},
+    {"/train", "/train", "自动质检录音、准备权重并微调 Seed-VC V2 CFM"},
     {"/train-log", "/train-log", "查看微调日志"},
-    {"/quality-report", "/quality-report", "查看质检报告"},
-    {"/models", "/models", "列出本引擎模型"},
+    {"/quality-report", "/quality-report", "查看音频质检报告的保存路径"},
+        // 模型管理：按名称加载已登记模型；Tab 可自动补全已注册的模型名。
+    {"/models", "/models", "列出 Seed-VC 已登记的微调模型"},
     {"/unload-model", "/unload-model", "卸载当前微调模型，恢复默认推理"},
-    {"/load-model", "/load-model <名称>", "加载微调模型"},
+    {"/load-model", "/load-model <名称>", "按名称加载已登记的 Seed-VC V2 微调模型"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
+// 【RVC 子菜单】训练和推理使用 RVC 自身的权重；不接受 Seed-VC 检查点。
 constexpr CommandInfo kRvc[] = {
+    // 基本设置：帮助、状态及可选的本地 Python / 源码路径。
     {"/help", "/help", "查看 RVC 命令"},
     {"/show", "/show", "显示 RVC 配置"},
     {"/python", "/python <Python路径>", "RVC Python 解释器"},
     {"/rvc-root", "/rvc-root <目录>", "RVC 源码目录"},
-    {"/source", "/source <音频文件>", "推理源音频文件"},
+    // 语音转换：可通过 /model 指定文件，或 /load-model 按名称加载已注册权重。
+    {"/source", "/source <音频文件>", "设置需要转换的源音频"},
     {"/output", "/output <结果.wav>", "推理输出文件"},
-    {"/model", "/model <模型.pth>", "RVC 已训练模型权重"},
+    {"/model", "/model <模型.pth>", "手工指定已经训练好的 RVC 推理模型 .pth"},
     {"/timeout", "/timeout <1..86400>", "推理超时（秒）"},
     {"/overwrite", "/overwrite on|off", "覆盖已有结果"},
-    {"/convert", "/convert", "使用已训练的 RVC 模型转换"},
-    {"/dataset", "/dataset <目录>", "训练数据目录"},
+    {"/convert", "/convert", "使用当前选择的 RVC 模型转换源音频"},
+    // 智能训练：填写录音目录和实验名，然后 /train；其余参数可保持 auto。
+    {"/dataset", "/dataset <目录>", "设置用于训练的目标音色录音目录"},
     {"/train-name", "/train-name <名称>", "训练实验名"},
     {"/epochs", "/epochs <1..10000>", "训练轮数"},
-    {"/batch", "/batch auto|<1..128>", "自动批次"},
+    {"/batch", "/batch auto|<1..128>", "训练批大小：auto=按设备显存自动选择"},
     {"/save-every", "/save-every <1..10000>", "权重保存间隔"},
-    {"/workers", "/workers auto|<0..64>", "自动线程数"},
-    {"/device", "/device auto|cuda|cpu", "自动检测训练 GPU"},
-    {"/gpu", "/gpu auto|<0..31>", "自动选择 GPU"},
-    {"/index", "/index on|off", "训练后构建 FAISS 索引"},
+    {"/workers", "/workers auto|<0..64>", "数据加载线程数：auto=自动配置"},
+    {"/device", "/device auto|cuda|cpu", "训练设备：auto=自动检测，cuda=显卡，cpu=处理器"},
+    {"/gpu", "/gpu auto|<0..31>", "指定显卡序号：auto=自动选择"},
+    {"/index", "/index on|off", "训练后是否生成 FAISS 检索索引"},
     {"/train-timeout", "/train-timeout <1..86400>", "训练超时（秒）"},
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
-    {"/train", "/train", "一键质检/下载预训练权重/自适应训练"},
+    {"/train", "/train", "自动检查录音与权重、选择显卡并训练 RVC"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
-    {"/models", "/models", "列出已训练模型"},
+        // 模型管理：自动读取训练结束后登记的 RVC 模型清单。
+    {"/models", "/models", "列出已经登记的 RVC 训练模型"},
     {"/unload-model", "/unload-model", "清除当前 RVC 模型选择"},
-    {"/load-model", "/load-model <名称>", "加载已登记模型"},
-    {"/quality-report", "/quality-report", "查看音频质检报告"},
-    {"/offline", "/offline on|off", "禁止自动下载模型"},
-    {"/train-legacy", "/train-legacy", "旧版 RVC 手动训练"},
+    {"/load-model", "/load-model <名称>", "按模型名称加载 RVC 训练权重"},
+    {"/quality-report", "/quality-report", "显示音频筛选报告文件路径"},
+    {"/offline", "/offline on|off", "权重下载：on=离线不下载，off=允许自动下载"},
+    {"/train-legacy", "/train-legacy", "使用旧版手动参数执行 RVC 训练"},
     {"/back", "/back", "返回主菜单"},
     {"/quit", "/quit", "退出"},
 };
@@ -159,10 +174,11 @@ bool allowed(ConsoleMenu menu, const std::string& key) {
     const auto set = command_set(menu);
     return std::any_of(set.first, set.last, [&](const CommandInfo& c) { return lower_ascii(c.name) == lower_ascii(key); });
 }
+// 标题与状态信息统一中文；引擎技术名称保持官方名称便于识别。
 std::string menu_label(ConsoleMenu menu) {
     if (menu == ConsoleMenu::SeedVC) return "Seed-VC";
     if (menu == ConsoleMenu::Rvc) return "RVC";
-    return "Main";
+    return "主菜单";
 }
 }  // namespace
 
@@ -181,6 +197,7 @@ TrainingConfiguration CommandShell::active_training_configuration() const {
     return menu_ == ConsoleMenu::SeedVC ? seed_training_configuration : training_configuration;
 }
 
+// 显示菜单名称；命令路由仍以 ConsoleMenu 枚举判断，不依赖翻译后的文本。
 std::string CommandShell::menu_name() const { return menu_label(menu_); }
 const Configuration& CommandShell::conversion_configuration() const {
     if (menu_ == ConsoleMenu::Main) throw std::logic_error("Select /Seed-VC or /RVC first");
