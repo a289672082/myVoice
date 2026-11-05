@@ -1,0 +1,64 @@
+name: Build portable Python runtimes (CPU)
+on:
+  push:
+    branches: [feat/portable-python-runtimes]
+    paths:
+      - .github/workflows/portable-python.yml
+      - scripts/build_portable_python.py
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  package:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+        engine: [seed-vc, rvc]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap CI packaging Python (not needed by users)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Get uv standalone executable
+        uses: astral-sh/setup-uv@v6
+      - name: Build bundled CPython and Python dependencies
+        run: python -u scripts/build_portable_python.py --engine ${{ matrix.engine }} --dist dist
+      - name: Upload runtime and SHA256
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ runner.os }}-${{ matrix.engine }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+  release:
+    runs-on: ubuntu-24.04
+    needs: package
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          merge-multiple: true
+          path: dist
+      - name: Publish portable Python artifacts to myVoice Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find dist -maxdepth 1 -name '*.zip' | wc -l)" -eq 4
+          tag=portable-python-v1
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Portable Python (Windows/Linux, RVC/Seed-VC, CPU)" \
+              --notes "Self-contained CPython + dependencies. Extract each ZIP into myVoice repository root. CPU only; AI model weights not included."
+          fi
+          gh release upload "$tag" dist/*.zip dist/*.sha256 --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets
