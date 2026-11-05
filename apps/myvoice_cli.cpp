@@ -30,7 +30,7 @@ int run(const std::vector<std::string>& args) {
 #ifdef MYVOICE_WITH_FTXUI
         return run_tui();
 #else
-        std::cout << "FTXUI disabled in this build; use /help for batch mode.\n";
+        std::cout << "此版本未启用 FTXUI，请使用 /help 查看批处理命令。\n";
         return 2;
 #endif
     }
@@ -41,11 +41,12 @@ int run(const std::vector<std::string>& args) {
     myvoice::Request convert_request;
     myvoice::TrainingConfiguration train_configuration;
     myvoice::TrainingRequest train_request;
+    // 无界面模式按顺序执行同一套 /命令解析器；训练/转换动作必须位于最后。
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& key = args[i];
         const bool is_action = key == "/convert" || key == "/train" || key == "/train-legacy";
         if (request_conversion || request_training)
-            throw std::invalid_argument("/convert or /train must be the final argument");
+            throw std::invalid_argument("/convert、/train 或 /train-legacy 必须是最后一个参数");
         if (key == "/Seed-VC" || key == "/seed-vc" || key == "/RVC" || key == "/rvc" ||
             key == "/back" || key == "/help" || key == "/show" ||
             key == "/convert" || key == "/train" || key == "/train-legacy" ||
@@ -67,24 +68,25 @@ int run(const std::vector<std::string>& args) {
             continue;
         }
         if (key == "/quit" || key == "/interactive")
-            throw std::invalid_argument(key + " is only supported in interactive mode");
+            throw std::invalid_argument(key + " 仅能在交互控制台内使用");
         if (key.empty() || key.front() != '/')
-            throw std::invalid_argument("Expected /option; use /help");
-        if (i + 1 >= args.size()) throw std::invalid_argument("Missing value after " + key);
+            throw std::invalid_argument("命令必须以 / 开头；输入 /help 查看中文说明");
+        if (i + 1 >= args.size()) throw std::invalid_argument("命令 " + key + " 后面缺少参数");
         const auto result = shell.set_option(key, args[++i]);
         if (!result.success) throw std::invalid_argument(result.message);
     }
     if (request_training) {
         const auto result = myvoice::VoiceTrainer(train_configuration).train(train_request);
-        std::cout << "Training successful: " << result.experiment_dir.string()
-                  << "\nLog: " << result.log_file.string()
-                  << "\nRegistered model: " << result.primary_model.string() << "\n";
+        std::cout << "训练完成：" << result.experiment_dir.string()
+                  << "\n训练日志：" << result.log_file.string()
+                  << "\n已登记模型：" << (result.primary_model.empty() ?
+                       "未自动登记（旧版手动训练）" : result.primary_model.string()) << "\n";
         return 0;
     }
     if (request_conversion) {
         const auto result = myvoice::VoiceConverter(convert_configuration).convert(convert_request);
-        std::cout << "Conversion successful: " << result.output.string() << " ("
-                  << result.elapsed.count() << " ms)\n";
+        std::cout << "声音转换完成：" << result.output.string() << "（耗时 "
+                  << result.elapsed.count() << " 毫秒）\n";
     }
     return 0;
 }
@@ -106,7 +108,7 @@ int main(int argc, char* argv[]) {
         }
         return run(args);
     } catch (const std::exception& e) {
-        std::cerr << "myVoice error: " << e.what() << '\n';
+        std::cerr << "myVoice 错误：" << e.what() << '\n';
         return 1;
     }
 }
