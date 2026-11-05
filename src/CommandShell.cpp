@@ -633,6 +633,34 @@ std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const
         if (starts("确认", trim(line))) result.push_back({"确认", "确认（开始训练）"});
         return result;
     }
+    if (wizard_step_ == WizardStep::Dataset || wizard_step_ == WizardStep::PreviewSource ||
+        wizard_step_ == WizardStep::PreviewTarget) {
+        // 新手输入路径无需 /dataset 前缀；Tab 可直接补全文件夹和试听 WAV。
+        try {
+            std::string prefix = trim(line);
+            if (!prefix.empty() && (prefix.front() == '"' || prefix.front() == 39))
+                prefix.erase(0, 1);
+            const fs::path given = prefix.empty() ? fs::path(".") : as_path(prefix);
+            const fs::path dir = given.has_parent_path() ? given.parent_path() : fs::path(".");
+            const std::string stem = prefix.empty() ? "" : as_string(given.filename());
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                const bool folder = entry.is_directory();
+                if (wizard_step_ == WizardStep::Dataset && !folder) continue;
+                if (!folder && !entry.is_regular_file()) continue;
+                const auto filename = as_string(entry.path().filename());
+                if (!starts(filename, stem)) continue;
+                const std::string full = as_string(entry.path()) + (folder ? "/" : "");
+                result.push_back({full, full + (folder ? "（文件夹）" : "（试听文件）")});
+                if (result.size() == 12) break;
+            }
+            std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+                return lhs.replacement < rhs.replacement;
+            });
+        } catch (const fs::filesystem_error&) {
+            // 路径不存在或无访问权限时只隐藏候选，真正提交时显示中文错误信息。
+        }
+        return result;
+    }
     if (wizard_step_ != WizardStep::None) return {};
 
     const auto blank = line.find_first_of(" \t");
