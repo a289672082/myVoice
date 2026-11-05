@@ -32,3 +32,4 @@ __pycache__/
 # 便携运行时由仓库 Releases 解压，不将数 GB 的二进制依赖存入 Git 历史。
 /runtime/**
 !/runtime/README.md
+!/runtime/manifest.json
