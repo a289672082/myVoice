@@ -9,6 +9,9 @@ enum class TrainingEngine { Rvc, SeedVC };
 // 保留原始 RVC 手动训练兼容性；smart=true 会执行自动质检、下载与硬件检测。
 struct TrainingRequest {
     std::filesystem::path dataset;
+    // 可选：训练完成后用经过授权的测试音频生成试听 WAV（不自动播放）。
+    std::filesystem::path preview_source;
+    std::filesystem::path preview_target; // Seed-VC V2 试听必须有参考录音
     std::string name = "myvoice";
     TrainingEngine engine = TrainingEngine::Rvc;
     bool smart = false;
@@ -41,6 +44,8 @@ class VoiceTrainer {
 public:
     explicit VoiceTrainer(TrainingConfiguration configuration);
     [[nodiscard]] TrainingResult train(const TrainingRequest& request) const;
+    // 复制便携 CPU 环境到独立 -gpu 目录，验证 CUDA 后才启用；dry_run 不下载。
+    [[nodiscard]] std::filesystem::path prepare_gpu(TrainingEngine engine, bool dry_run = false) const;
 private:
     TrainingConfiguration configuration_;
 };

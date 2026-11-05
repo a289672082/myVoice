@@ -126,7 +126,7 @@ def select_hardware(engine: str, requested: str = "auto", batch: int = 0,
         if requested == "auto":
             print("[硬件] 未找到 PyTorch 可用的 CUDA，退回 CPU（训练可能非常慢）", flush=True)
         return {"device": "cpu", "gpu": 0, "vram_gb": 0.0,
-                "batch": batch or 1, "workers": 0 if os.name == "nt" else 2}
+                "batch": batch or 1, "workers": (1 if engine == "rvc" else 0) if os.name == "nt" else 2}
     gpu = preferred_gpu
     if gpu < 0:
         gpu = max(range(cuda.device_count()),
@@ -141,7 +141,7 @@ def select_hardware(engine: str, requested: str = "auto", batch: int = 0,
         chosen = 8 if vram >= 16 else 4 if vram >= 10 else 2 if vram >= 6 else 1
     plan = {"device": "cuda", "gpu": gpu, "vram_gb": round(vram, 2),
             "name": props.name, "batch": batch or chosen,
-            "workers": 0 if os.name == "nt" else 2}
+            "workers": (1 if engine == "rvc" else 0) if os.name == "nt" else 2}
     print(f"[硬件] {props.name}, 显存 {vram:.1f} GiB, batch={plan['batch']}", flush=True)
     return plan
 
@@ -303,6 +303,22 @@ def stage(command: list[str], cwd: Path, env=None) -> None:
     subprocess.run(list(map(str, command)), cwd=cwd, env=env, check=True)
 
 
+
+def training_progress(folder: Path, state: str, stage: str, description: str) -> None:
+    """以原子替换发布文字阶段；阶段不伪装成耗时百分比或准确剩余时间。"""
+    if any("\n" in x or "\r" in x for x in (state, stage, description)):
+        raise ValueError("训练进度字段不得包含换行")
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / "myvoice_progress.txt"
+    tmp = target.with_name(target.name + f".{os.getpid()}.tmp")
+    try:
+        tmp.write_text(f"{state}\n{stage}\n{description}\n", encoding="utf-8")
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
+    print(f"[进度 {stage}] {state}：{description}", flush=True)
+
+
 def execute(args: argparse.Namespace) -> None:
     if not NAME_RE.fullmatch(args.name):
         raise ValueError("模型名只能使用英文字母、数字、下划线或连字符（1..64 字符）")
@@ -313,18 +329,23 @@ def execute(args: argparse.Namespace) -> None:
         raise FileNotFoundError("缺少内置 Seed-VC train_v2.py")
     # 资源下载在检测数据质量之后：不浪费带宽在空/错误音频集上。
     folder = root / ("logs" if args.engine == "rvc" else "runs") / args.name
+    training_progress(folder, "进行中", "1/5", "筛选并整理训练音频")
     cleaned = folder / "myvoice_clean_audio"
     report = prepare_dataset(Path(args.dataset), cleaned, args.engine,
                              min_seconds=args.minimum_seconds)
+    training_progress(folder, "进行中", "2/5", "检测 GPU/CPU，自动调整批次")
     plan = select_hardware(args.engine, args.device, args.batch, args.gpu)
     (folder / "myvoice_training_plan.json").write_text(
         json.dumps({"engine": args.engine, "name": args.name, "device": plan,
                     "quality_duration_s": report["duration_s"]}, ensure_ascii=False, indent=2),
         encoding="utf-8")
     if args.dry_run:
+        training_progress(folder, "检查完成", "2/5", "素材/硬件检查通过；未下载权重、未启动训练")
         print("[检查] dry-run 通过，未下载权重，也未开始训练", flush=True)
         return
+    training_progress(folder, "进行中", "3/5", "检查本地权重，缺失时下载官方预训练资源")
     assets = ensure_pretrained(args.engine, root, offline=args.offline)
+    training_progress(folder, "进行中", "4/5", "执行官方训练流水线（此阶段通常耗时最长）")
     if args.engine == "rvc":
         cmd = [
             sys.executable, str(REPO / "scripts" / "rvc_train.py"),
@@ -367,7 +388,9 @@ def execute(args: argparse.Namespace) -> None:
             raise RuntimeError("Seed-VC 微调结束，但未找到 CFM 检查点；请检查训练日志")
         model = max(candidates, key=lambda p: (p.stat().st_mtime_ns, p.name))
         secondary = Path(assets["ar_base.pth"])
+    training_progress(folder, "进行中", "5/5", "检查训练输出并登记模型")
     register_model(Path(args.registry), args.engine, args.name, model, secondary)
+    training_progress(folder, "成功", "5/5", "模型已登记，可通过 /models 和 /load-model 使用")
     print(f"[完成] 已自动注册模型 {args.engine}/{args.name}", flush=True)
 
 
@@ -396,8 +419,20 @@ def parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    options = parse_args()
     try:
-        execute(parse_args())
+        execute(options)
     except Exception as exc:
+        # 保留故障发生时的当前阶段，不把失败错误地标成已完成 5/5。
+        try:
+            folder = Path(options.root).resolve() / (
+                "logs" if options.engine == "rvc" else "runs") / options.name
+            status_file = folder / "myvoice_progress.txt"
+            current = status_file.read_text(encoding="utf-8").splitlines()
+            stage = current[1] if len(current) >= 2 else "0/5"
+            training_progress(folder, "失败", stage,
+                              f"{type(exc).__name__}: {str(exc)[:300]}")
+        except Exception:
+            pass
         print(f"[错误] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         sys.exit(1)

@@ -56,6 +56,10 @@ constexpr CommandInfo kSeed[] = {
     {"/offline", "/offline on|off", "权重下载：on=离线不下载，off=允许自动下载"},
     {"/train-timeout", "/train-timeout <秒>", "训练超时"},
     {"/train", "/train", "自动质检录音、准备权重并微调 Seed-VC V2 CFM"},
+    {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/train-status", "/train-status", "读取实时训练阶段和状态（不显示虚构百分比）"},
+    {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
+    {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "查看微调日志"},
     {"/quality-report", "/quality-report", "查看音频质检报告的保存路径"},
         // 模型管理：按名称加载已登记模型；Tab 可自动补全已注册的模型名。
@@ -92,6 +96,10 @@ constexpr CommandInfo kRvc[] = {
     {"/train-timeout", "/train-timeout <1..86400>", "训练超时（秒）"},
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
     {"/train", "/train", "自动检查录音与权重、选择显卡并训练 RVC"},
+    {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/train-status", "/train-status", "读取实时训练阶段和状态（不显示虚构百分比）"},
+    {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
+    {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
         // 模型管理：自动读取训练结束后登记的 RVC 模型清单。
     {"/models", "/models", "列出已经登记的 RVC 训练模型"},
@@ -305,8 +313,108 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
     }
 }
 
+// 新手训练向导把交互分成四个阶段；训练动作只在用户最后明确确认后发出。
+std::string CommandShell::wizard_hint() const {
+    switch (wizard_step_) {
+        case WizardStep::Dataset: return "【步骤 1】请输入目标音色录音目录（可粘贴 Windows 路径），/cancel 取消：";
+        case WizardStep::Name: return "【步骤 2】输入模型名称（英文/数字/_/-；直接回车使用默认名称）：";
+        case WizardStep::Device: return "【步骤 3】选择 auto（推荐）/cpu/cuda；回车自动检测：";
+        case WizardStep::PreviewSource: return "【步骤 4】可选：输入用于试听的测试音频 WAV 路径；直接回车跳过试听：";
+        case WizardStep::PreviewTarget: return "【步骤 5】Seed-VC 试听需要目标音色参考 WAV；回车取消试听：";
+        case WizardStep::Confirm: return "【最后确认】输入「确认」开始训练，/cancel 放弃：";
+        case WizardStep::None: return {};
+    }
+    return {};
+}
 CommandResult CommandShell::execute(const std::string& line) {
     try {
+        // 向导进行中，只处理本步骤内容。/cancel 取消，/back 返回引擎菜单而不启动训练。
+        if (wizard_step_ != WizardStep::None) {
+            std::string value = trim(line);
+            if (value == "/cancel" || value == "/back") {
+                wizard_step_ = WizardStep::None;
+                return {CommandAction::None, "已取消训练向导，训练参数保持不变。", true};
+            }
+            if (value == "/help") return {CommandAction::None, wizard_hint(), true};
+            if (wizard_step_ == WizardStep::Dataset) {
+                if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') ||
+                    (value.front() == 39 && value.back() == 39)))
+                    value = value.substr(1, value.size()-2);
+                if (value.empty()) throw std::invalid_argument("请填写录音文件夹路径，不能留空");
+                const auto dataset = as_path(value);
+                if (!fs::is_directory(dataset))
+                    throw std::invalid_argument("找不到录音目录：" + value + "。请检查目录是否存在。");
+                wizard_request_.dataset = fs::absolute(dataset);
+                wizard_step_ = WizardStep::Name;
+                return {CommandAction::None, "已选择录音目录：" + value + "\n" + wizard_hint(), true};
+            }
+            if (wizard_step_ == WizardStep::Name) {
+                if (!value.empty()) {
+                    if (value.size() > 64 || !std::all_of(value.begin(), value.end(), [](char ch) {
+                            return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                                   (ch >= '0' && ch <= '9') || ch == '_' || ch == '-'; }))
+                        throw std::invalid_argument("模型名只能由英文字母、数字、_ 或 - 组成（最多64字符）");
+                    wizard_request_.name = value;
+                }
+                wizard_step_ = WizardStep::Device;
+                return {CommandAction::None, "模型名称：" + wizard_request_.name + "\n" + wizard_hint(), true};
+            }
+            if (wizard_step_ == WizardStep::Device) {
+                if (value.empty()) value = "auto";
+                value = lower_ascii(value);
+                if (value != "auto" && value != "cuda" && value != "cpu")
+                    throw std::invalid_argument("请输入 auto、cuda 或 cpu；不确定就输入 auto");
+                wizard_request_.device = value;
+                wizard_request_.batch_size = 0;
+                wizard_request_.gpu = -1;
+                wizard_request_.smart = true;
+                wizard_request_.preview_source.clear();
+                wizard_request_.preview_target.clear();
+                wizard_step_ = WizardStep::PreviewSource;
+                return {CommandAction::None, wizard_hint(), true};
+            }
+            if (wizard_step_ == WizardStep::PreviewSource ||
+                wizard_step_ == WizardStep::PreviewTarget) {
+                if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') ||
+                    (value.front() == 39 && value.back() == 39)))
+                    value = value.substr(1, value.size()-2);
+                if (!value.empty() && !fs::is_regular_file(as_path(value)))
+                    throw std::invalid_argument("试听文件不存在：" + value);
+                if (wizard_step_ == WizardStep::PreviewSource) {
+                    wizard_request_.preview_source = value.empty() ? fs::path{} :
+                                                     fs::absolute(as_path(value));
+                    wizard_step_ = (menu_ == ConsoleMenu::SeedVC &&
+                                    !wizard_request_.preview_source.empty()) ?
+                                   WizardStep::PreviewTarget : WizardStep::Confirm;
+                } else {
+                    wizard_request_.preview_target = value.empty() ? fs::path{} :
+                                                     fs::absolute(as_path(value));
+                    if (wizard_request_.preview_target.empty())
+                        wizard_request_.preview_source.clear();
+                    wizard_step_ = WizardStep::Confirm;
+                }
+                if (wizard_step_ != WizardStep::Confirm)
+                    return {CommandAction::None, wizard_hint(), true};
+                value.clear();
+                return {CommandAction::None,
+                    "请核对配置：\n引擎：" + menu_name() +
+                    "\n录音：" + as_string(wizard_request_.dataset) +
+                    "\n模型：" + wizard_request_.name +
+                    "\n设备：" + wizard_request_.device +
+                    "\n试听：" + (wizard_request_.preview_source.empty() ?
+                        "跳过" : as_string(wizard_request_.preview_source)) +
+                    "\n说明：开始后可能下载较大预训练模型；不会自动覆盖已有试听音频。\n" +
+                    wizard_hint(), true};
+            }
+            if (wizard_step_ == WizardStep::Confirm) {
+                if (value != "确认" && lower_ascii(value) != "yes" && lower_ascii(value) != "y")
+                    throw std::invalid_argument("输入「确认」开始训练；输入 /cancel 放弃");
+                if (menu_ == ConsoleMenu::SeedVC) seed_training = wizard_request_;
+                else training = wizard_request_;
+                wizard_step_ = WizardStep::None;
+                return {CommandAction::Train, "已确认配置，开始智能训练（可使用 /train-status 查看进度）。", true};
+            }
+        }
         const auto args = tokenize(trim(line));
         if (args.empty()) return {};
         const auto& key = args.front();
@@ -319,7 +427,9 @@ CommandResult CommandShell::execute(const std::string& line) {
             normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
             normalized == "/train-log" || normalized == "/models" ||
             normalized == "/quality-report" || normalized == "/unload-model" ||
-            normalized == "/quit";
+            normalized == "/train-wizard" || normalized == "/train-status" ||
+            normalized == "/gpu-check" ||
+            normalized == "/gpu-setup" || normalized == "/quit";
         if (no_value) {
             if (args.size() != 1) throw std::invalid_argument(key + " 不需要附加参数");
             if (normalized == "/seed-vc") { menu_ = ConsoleMenu::SeedVC; return {CommandAction::None, "已进入 Seed-VC 菜单。输入 /help 查看专属命令。", true}; }
@@ -329,6 +439,22 @@ CommandResult CommandShell::execute(const std::string& line) {
             if (normalized == "/show") return {CommandAction::None, summary(), true};
             if (normalized == "/quit") return {CommandAction::Quit, "已退出程序", true};
             if (normalized == "/convert") return {CommandAction::Convert, "正在使用 " + menu_name() + " 转换声音...", true};
+            if (normalized == "/gpu-check")
+                return {CommandAction::CheckGpu, "正在检查显卡驱动，不会修改环境...", true};
+            if (normalized == "/gpu-setup")
+                return {CommandAction::PrepareGpu,
+                        "准备独立 CUDA 环境（需联网下载大量文件；不会覆盖 CPU 环境）...", true};
+            if (normalized == "/train-wizard") {
+                wizard_request_ = active_training();
+                wizard_request_.smart = true;
+                wizard_request_.preview_source.clear();
+                wizard_request_.preview_target.clear();
+                wizard_request_.device = "auto";
+                wizard_request_.batch_size = 0;
+                wizard_request_.gpu = -1;
+                wizard_step_ = WizardStep::Dataset;
+                return {CommandAction::None, "已进入新手训练向导。\n" + wizard_hint(), true};
+            }
             if (normalized == "/train" || normalized == "/train-legacy") {
                 auto& tr = menu_ == ConsoleMenu::SeedVC ? seed_training : training;
                 tr.smart = normalized == "/train";
@@ -363,6 +489,27 @@ CommandResult CommandShell::execute(const std::string& line) {
                     seed ? "train_v2.py" : "train/train.py");
                 return {CommandAction::None, as_string(root /
                     (seed ? "runs" : "logs") / tr.name / "myvoice_quality_report.json"), true};
+            }
+            if (normalized == "/train-status") {
+                const bool seed = menu_ == ConsoleMenu::SeedVC;
+                const auto& cfg = seed ? seed_training_configuration : training_configuration;
+                const auto& tr = seed ? seed_training : training;
+                const fs::path root = resolve_engine_root(
+                    seed ? cfg.seed_vc_root : cfg.rvc_root,
+                    seed ? "seed-vc" : "rvc",
+                    seed ? "train_v2.py" : "train/train.py");
+                const auto status_file = root / (seed ? "runs" : "logs") / tr.name /
+                                         "myvoice_progress.txt";
+                std::ifstream input(status_file, std::ios::binary);
+                if (!input) return {CommandAction::None,
+                    "尚未开始智能训练或暂无进度文件。输入 /train-wizard 开始。", true};
+                std::string state, step, description;
+                std::getline(input, state);
+                std::getline(input, step);
+                std::getline(input, description);
+                return {CommandAction::None,
+                    "训练状态：" + state + " | 阶段：" + step + " | " + description +
+                    "\n进度为工作阶段，不代表准确耗时百分比。", true};
             }
             if (normalized == "/train-log") {
                 const bool seed = menu_ == ConsoleMenu::SeedVC;
@@ -400,11 +547,13 @@ std::string CommandShell::help() const {
         out << "\n使用顺序：先输入 /Seed-VC 或 /RVC，再进行声音转换或模型训练。\n";
     } else if (menu_ == ConsoleMenu::SeedVC) {
         out << "\n讲话转换示例：/engine speech → /source → /target → /output → /convert\n";
+        out << "新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练；有 NVIDIA 显卡可先 /gpu-check → /gpu-setup\n";
         out << "V2 微调示例：/dataset → /train-name → /train → /models → /load-model\n";
         out << "说明：/engine singing 使用 V1 歌声模型，不能加载 V2 CFM/AR 检查点。\n";
         out << "输入 /back 返回主菜单；带空格的文件路径请用双引号包围。\n";
     } else {
-        out << "\n自动训练示例：/dataset → /train-name → /device auto → /train\n";
+        out << "\n新手推荐：/train-wizard → 按中文提示逐步填写 → 确认训练；有 NVIDIA 显卡可先 /gpu-check → /gpu-setup\n";
+        out << "高级用户：/dataset → /train-name → /device auto → /train\n";
         out << "使用模型示例：/models → /load-model → /source → /output → /convert\n";
         out << "说明：/train-legacy 为旧版手工训练模式，/offline on 禁止联网下载权重。\n";
         out << "输入 /back 返回主菜单；带空格的文件路径请用双引号包围。\n";
@@ -473,6 +622,47 @@ std::string suggestion_label(const std::string& key, const std::string& value) {
 
 std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const {
     std::vector<Suggestion> result;
+    // 向导不要求 / 命令前缀；设备选择直接显示带中文解释的枚举。
+    if (wizard_step_ == WizardStep::Device) {
+        for (const auto& value : {"auto", "cuda", "cpu"})
+            if (starts(value, trim(line)))
+                result.push_back({value, suggestion_label("/device", value)});
+        return result;
+    }
+    if (wizard_step_ == WizardStep::Confirm) {
+        if (starts("确认", trim(line))) result.push_back({"确认", "确认（开始训练）"});
+        return result;
+    }
+    if (wizard_step_ == WizardStep::Dataset || wizard_step_ == WizardStep::PreviewSource ||
+        wizard_step_ == WizardStep::PreviewTarget) {
+        // 新手输入路径无需 /dataset 前缀；Tab 可直接补全文件夹和试听 WAV。
+        try {
+            std::string prefix = trim(line);
+            if (!prefix.empty() && (prefix.front() == '"' || prefix.front() == 39))
+                prefix.erase(0, 1);
+            const fs::path given = prefix.empty() ? fs::path(".") : as_path(prefix);
+            const fs::path dir = given.has_parent_path() ? given.parent_path() : fs::path(".");
+            const std::string stem = prefix.empty() ? "" : as_string(given.filename());
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                const bool folder = entry.is_directory();
+                if (wizard_step_ == WizardStep::Dataset && !folder) continue;
+                if (!folder && !entry.is_regular_file()) continue;
+                const auto filename = as_string(entry.path().filename());
+                if (!starts(filename, stem)) continue;
+                const std::string full = as_string(entry.path()) + (folder ? "/" : "");
+                result.push_back({full, full + (folder ? "（文件夹）" : "（试听文件）")});
+                if (result.size() == 12) break;
+            }
+            std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+                return lhs.replacement < rhs.replacement;
+            });
+        } catch (const fs::filesystem_error&) {
+            // 路径不存在或无访问权限时只隐藏候选，真正提交时显示中文错误信息。
+        }
+        return result;
+    }
+    if (wizard_step_ != WizardStep::None) return {};
+
     const auto blank = line.find_first_of(" \t");
     if (blank == std::string::npos) {
         const auto set = command_set(menu_);

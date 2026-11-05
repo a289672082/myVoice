@@ -3,6 +3,8 @@
 #include "myvoice/EnginePaths.h"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -22,6 +24,38 @@ int main() {
         myvoice::CommandShell shell;
         check(myvoice::resolve_runtime_python("custom-python", "rvc") ==
                   std::filesystem::path("custom-python"), "explicit /python override");
+        // 临时构造一个 CPU/GPU 便携目录，验证不会误查 Linux 的 rvc/rvc-gpu 路径。
+        {
+            namespace fs = std::filesystem;
+            const auto original = fs::current_path();
+            const auto tmp = fs::temp_directory_path() /
+                ("myvoice-gpu-runtime-test-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()));
+#ifdef _WIN32
+            const fs::path cpu = tmp / "runtime/windows-x64/rvc/python.exe";
+            const fs::path gpu = tmp / "runtime/windows-x64/rvc-gpu/python.exe";
+#else
+            const fs::path cpu = tmp / "runtime/linux-x64/rvc/bin/python3";
+            const fs::path gpu = tmp / "runtime/linux-x64/rvc-gpu/bin/python3";
+#endif
+            fs::create_directories(cpu.parent_path());
+            fs::create_directories(gpu.parent_path());
+            { std::ofstream out(cpu); out << "cpu"; }
+            { std::ofstream out(gpu); out << "gpu"; }
+            fs::current_path(tmp);
+            check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(cpu),
+                  "CPU runtime selected without ready marker");
+#ifdef _WIN32
+            const auto ready_file = gpu.parent_path() / "myvoice-gpu-ready.json";
+#else
+            const auto ready_file = gpu.parent_path().parent_path() / "myvoice-gpu-ready.json";
+#endif
+            { std::ofstream ready(ready_file); ready << "{}"; }
+            check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(gpu),
+                  "GPU runtime selected when marker and interpreter exist");
+            fs::current_path(original);
+            fs::remove_all(tmp);
+        }
         bool runtime_not_found = false;
         try { (void)myvoice::resolve_runtime_python({}, "rvc"); }
         catch (const std::invalid_argument&) { runtime_not_found = true; }
@@ -53,7 +87,43 @@ int main() {
         check(!shell.execute("/back").success, "no /back in main");
         check(!shell.execute("/Seed-VC argument").success, "navigation takes no arguments");
 
+        // 中文交互式向导：确认前不修改配置，取消不启动训练，错误输入可重试。
         check(shell.execute("/Seed-VC").success, "enter seed menu");
+        {
+            const auto old_name = shell.seed_training.name;
+            check(shell.execute("/train-wizard").success && shell.wizard_active(), "start Seed wizard");
+            check(!shell.execute("not-existing-voice-folder").success, "wizard rejects missing data folder");
+            check(shell.execute("/cancel").success && !shell.wizard_active(), "wizard cancellation");
+            check(shell.seed_training.name == old_name, "wizard cancel should not modify training");
+            // 测试新手向导的可选试听源文件与 Seed-VC 目标参考音频步骤。
+            const auto audio_sample = std::filesystem::temp_directory_path() /
+                ("myvoice-test-preview-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()) + ".wav");
+            { std::ofstream out(audio_sample, std::ios::binary); out << "mock wav"; }
+            check(shell.execute("/train-wizard").success, "wizard preview restart");
+            check(shell.execute(std::filesystem::current_path().string()).success, "preview dataset");
+            check(shell.execute("seed_voice_preview").success, "preview name");
+            check(shell.execute("auto").success, "preview device");
+            check(shell.execute(audio_sample.string()).success, "preview source");
+            check(shell.execute(audio_sample.string()).success, "Seed reference sample");
+            check(shell.execute("确认").action == CommandAction::Train, "preview training confirmed");
+            check(shell.seed_training.preview_source == std::filesystem::absolute(audio_sample) &&
+                  shell.seed_training.preview_target == std::filesystem::absolute(audio_sample),
+                  "wizard stores optional preview settings");
+            std::filesystem::remove(audio_sample);
+            check(shell.execute("/train-wizard").success, "restart Seed wizard");
+            check(shell.execute(std::filesystem::current_path().string()).success,
+                  "wizard accepts existing folder");
+            check(!shell.execute("wrong name with spaces").success, "wizard rejects unsafe model name");
+            check(shell.execute("seed_voice_wizard").success, "wizard model name");
+            check(shell.execute("auto").success, "wizard automatic GPU choice");
+            check(shell.execute("").success, "wizard skips optional preview");
+            check(shell.execute("无效确认").success == false, "wizard requires explicit confirmation");
+            check(shell.execute("确认").action == CommandAction::Train, "wizard launches Seed fine-tune");
+            check(!shell.wizard_active() && shell.seed_training.smart &&
+                  shell.seed_training.name == "seed_voice_wizard" &&
+                  shell.seed_training.device == "auto", "wizard commits correct training request");
+        }
         check(shell.menu() == ConsoleMenu::SeedVC, "must be in Seed-VC menu");
         check(contains(shell.suggestions("/con"), "/convert"), "Seed-VC conversion completion");
         check(contains(shell.suggestions("/engine s"), "/engine speech"), "Seed-VC engine suggestion");
@@ -63,6 +133,10 @@ int main() {
                          hint.display.find("讲话") != std::string::npos;
               }), "Seed-VC autocomplete must explain V2 in Chinese");
         check(contains(shell.suggestions("/tr"), "/train"), "Seed-VC V2 fine-tune completion");
+        check(contains(shell.suggestions("/train-w"), "/train-wizard"), "Seed wizard command");
+        check(shell.execute("/gpu-check").action == CommandAction::CheckGpu, "Seed GPU check action");
+        check(shell.execute("/gpu-setup").action == CommandAction::PrepareGpu, "Seed GPU setup action");
+        check(shell.execute("/train-status").success, "Seed progress command");
         check(shell.execute("/dataset seed_speech").success, "Seed dataset");
         check(shell.execute("/device auto").success, "Seed hardware auto");
         check(shell.execute("/train-steps 500").success && shell.seed_training.steps == 500, "Seed fine-tune steps");
@@ -102,6 +176,9 @@ int main() {
         check(shell.execute("/back").success && shell.menu() == ConsoleMenu::Main, "return to main");
         check(shell.execute("/rvc").success && shell.menu() == ConsoleMenu::Rvc, "enter RVC case-insensitively");
         check(contains(shell.suggestions("/tr"), "/train"), "RVC training completion");
+        check(shell.execute("/gpu-check").action == CommandAction::CheckGpu, "RVC GPU check action");
+        check(shell.execute("/gpu-setup").action == CommandAction::PrepareGpu, "RVC GPU setup action");
+        check(shell.execute("/train-status").success, "RVC progress command");
         check(contains(shell.suggestions("/device c"), "/device cuda"), "RVC device completion");
         check(contains(shell.suggestions("/device a"), "/device auto"), "RVC GPU auto completion");
         const auto rvc_hints = shell.suggestions("/device a");

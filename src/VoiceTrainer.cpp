@@ -75,6 +75,11 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
     const auto exp = root / (seed ? "runs" : "logs") / req.name;
     fs::create_directories(exp);
     const auto logfile = exp / "myvoice_train.log";
+    // 同名实验再次训练时，先清除上一次的“成功”状态，避免新手误看过期进度。
+    if (req.smart) {
+        std::error_code ignored;
+        fs::remove(exp / "myvoice_progress.txt", ignored);
+    }
     std::vector<fs::path> args;
     if (req.smart) {
         const auto script = project_script(configuration_.smart_script, "smart_train.py");
@@ -130,5 +135,26 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
                                      logfile.string());
     }
     return result;
+}
+// GPU 准备过程单独写日志，失败也不会删除原来的 CPU 便携 Python。
+fs::path VoiceTrainer::prepare_gpu(TrainingEngine selected, bool dry_run) const {
+    const bool seed = selected == TrainingEngine::SeedVC;
+    const std::string engine = seed ? "seed-vc" : "rvc";
+    const auto root = seed
+        ? resolve_engine_root(configuration_.seed_vc_root, "seed-vc", "train_v2.py")
+        : resolve_engine_root(configuration_.rvc_root, "rvc", "train/train.py");
+    const auto script = project_script({}, "setup_gpu_runtime.py");
+    const auto log_dir = root / (seed ? "runs" : "logs");
+    fs::create_directories(log_dir);
+    const auto logfile = log_dir / "myvoice_gpu_setup.log";
+    std::vector<fs::path> args{script, "--engine", engine};
+    if (dry_run) args.emplace_back("--dry-run");
+    const auto bundled = resolve_runtime_python({}, engine);
+    const auto exit_code = detail::run_process(
+        absolute_executable(bundled), args, root, std::chrono::hours(3), logfile);
+    if (exit_code != 0)
+        throw std::runtime_error("GPU 环境检查/准备失败；原 CPU 运行包未修改。\n" +
+                                 read_tail(logfile));
+    return logfile;
 }
 }  // namespace myvoice

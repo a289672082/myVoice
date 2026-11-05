@@ -37,6 +37,8 @@ int run(const std::vector<std::string>& args) {
     myvoice::CommandShell shell;
     bool request_conversion = false;
     bool request_training = false;
+    bool request_gpu = false;
+    bool gpu_dry_run = false;
     myvoice::Configuration convert_configuration;
     myvoice::Request convert_request;
     myvoice::TrainingConfiguration train_configuration;
@@ -44,18 +46,24 @@ int run(const std::vector<std::string>& args) {
     // 无界面模式按顺序执行同一套 /命令解析器；训练/转换动作必须位于最后。
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& key = args[i];
-        const bool is_action = key == "/convert" || key == "/train" || key == "/train-legacy";
-        if (request_conversion || request_training)
+        const bool is_action = key == "/convert" || key == "/train" ||
+                               key == "/train-legacy" || key == "/gpu-check" || key == "/gpu-setup";
+        if (request_conversion || request_training || request_gpu)
             throw std::invalid_argument("/convert、/train 或 /train-legacy 必须是最后一个参数");
         if (key == "/Seed-VC" || key == "/seed-vc" || key == "/RVC" || key == "/rvc" ||
             key == "/back" || key == "/help" || key == "/show" ||
             key == "/convert" || key == "/train" || key == "/train-legacy" ||
             key == "/train-log" || key == "/models" || key == "/quality-report" ||
-            key == "/unload-model") {
+            key == "/unload-model" || key == "/gpu-check" || key == "/gpu-setup") {
             const auto result = shell.execute(key);
             if (!result.success) throw std::invalid_argument(result.message);
             if (is_action) {
-                if (key == "/convert") {
+                if (key == "/gpu-check" || key == "/gpu-setup") {
+                    request_gpu = true;
+                    gpu_dry_run = key == "/gpu-check";
+                    train_configuration = shell.active_training_configuration();
+                    train_request = shell.active_training();
+                } else if (key == "/convert") {
                     request_conversion = true;
                     convert_configuration = shell.conversion_configuration();
                     convert_request = shell.conversion_request();
@@ -67,6 +75,8 @@ int run(const std::vector<std::string>& args) {
             } else if (!result.message.empty()) std::cout << result.message << '\n';
             continue;
         }
+        if (key == "/train-wizard")
+            throw std::invalid_argument("/train-wizard 需要 FTXUI 交互模式；批处理请使用 /dataset /train-name /train");
         if (key == "/quit" || key == "/interactive")
             throw std::invalid_argument(key + " 仅能在交互控制台内使用");
         if (key.empty() || key.front() != '/')
@@ -74,6 +84,12 @@ int run(const std::vector<std::string>& args) {
         if (i + 1 >= args.size()) throw std::invalid_argument("命令 " + key + " 后面缺少参数");
         const auto result = shell.set_option(key, args[++i]);
         if (!result.success) throw std::invalid_argument(result.message);
+    }
+    if (request_gpu) {
+        const auto log = myvoice::VoiceTrainer(train_configuration).prepare_gpu(
+            train_request.engine, gpu_dry_run);
+        std::cout << "GPU 检查/安装完成，日志：" << log.string() << "\n";
+        return 0;
     }
     if (request_training) {
         const auto result = myvoice::VoiceTrainer(train_configuration).train(train_request);

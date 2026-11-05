@@ -4,7 +4,7 @@ Windows / Linux 跨平台 C++17 + FTXUI 语音转换程序，附带可直接打�
 
 **FTXUI、RVC、Seed-VC 的源码都已直接检入本仓库**，位于 `third_party/`，不是 Git 子模块，不需要 CMake/运行时从 GitHub 下载引擎源码。FTXUI 为 MIT；RVC 为 MIT；Seed-VC 为 GPL-3.0，详见各自 `LICENSE`。请分别遵守对应许可。
 
-**重要限制：** 此次内置的是源码，便携 Python 运行包单独通过同仓库 Releases 分发，而不是完整的离线 AI 运行环境。PyTorch、CUDA、Python 第三方包、HuBERT/RMVPE、Seed-VC 所需检查点等大型预训练模型权重仍需要单独准备；因此 **C++ 编译离线可行，首次模型运行不保证离线**。不包含第三方示例歌曲或人物录音。
+**首次使用：** 仓库内置 RVC、Seed-VC 和 FTXUI 源码。完整 CPU 便携 Python 可通过 `scripts/get_portable_python.ps1`（Linux 为 .sh）免安装解压。智能 `/train` 会按需下载预训练权重；NVIDIA GPU 由用户明确执行 `/gpu-check`、`/gpu-setup` 后配置独立 CUDA 环境。**大型权重与 CUDA 环境不在普通 Git 文件中，首次运行通常需联网。**
 
 | 引擎 | 默认源码目录 | 功能 |
 |---|---|---|
@@ -48,6 +48,52 @@ bash scripts/get_portable_python.sh all
 [查看 Portable Python 发布页面](https://github.com/a289672082/myVoice/releases/tag/portable-python-v1)；[构建及来源说明](runtime/README.md)。
 
 **边界：** 提供的是 Python + Python 扩展包的 CPU 版本；NVIDIA CUDA 驱动、GPU 运行包，以及 RVC/Seed-VC 的 HuBERT/RMVPE/Seed-VC 预训练权重不在这些压缩包中。CPU 可用于先验证流程，但实际训练与长音频推理可能很慢。Python 依赖的复制与重定位必须经过 Windows/Linux 运行测试；未发布通过校验的附件之前不能称为已完成完整免安装部署。
+
+## 新手训练向导（推荐）
+
+**不熟悉 Python、CUDA、模型参数也可以从这里开始。** 启动 FTXUI，进入 **/RVC** 或 **/Seed-VC**，输入：
+
+```text
+/RVC
+/train-wizard
+```
+
+向导按中文提示依次询问：①训练录音目录；②模型名称；③设备（直接回车默认 `auto`）；④可选试听样本 WAV（回车跳过，Seed-VC 还会询问目标参考录音）；⑤核对配置并输入 **确认**。输入 `/cancel` 可随时退出，取消时不会修改已有训练参数；**最后确认前不会开始训练或下载大型权重**。Seed-VC 内同样支持 `/train-wizard`，专门运行 V2 CFM 微调。
+
+### GPU 自动检查与配置
+
+如果电脑有 NVIDIA 显卡，建议在开始训练前执行：
+
+```text
+/RVC
+/gpu-check
+/gpu-setup
+/train-wizard
+```
+
+- `/gpu-check`：只读 `nvidia-smi` 检查 GPU 型号、驱动和计算能力，**不下载文件**。
+- `/gpu-setup`：用户明确执行后下载官方固定版本的 uv 与 PyTorch CUDA 12.1，复制仓库 CPU 便携 Python 到独立的 `runtime/windows-x64/rvc-gpu/`（Linux 相应目录），在新环境中安装 CUDA 依赖并做真实 GPU 张量测试。**原 CPU Python 不会被覆盖**。
+- 验证通过后生成 `myvoice-gpu-ready.json`，后续训练/推理自动优先使用该 GPU Python。Seed-VC 对应 `/Seed-VC` 子菜单与 `seed-vc-gpu/`。
+- 检测到不支持的显卡、旧驱动或下载/安装失败时明确报错，并保持 CPU 运行环境可用；不会自动安装或更新显卡驱动。GPU 包可能需要几 GB 磁盘及大量下载流量。若 PyTorch 2.4.x 不支持较新显卡（例如部分 RTX 50 系列），请等待经验证的新版本，不强行安装。
+
+### 训练进度与试听
+
+开始训练后可输入 `/train-status` 查看阶段（**音频筛选 → GPU/CPU 检测 → 下载权重 → 执行训练 → 注册模型**），或 `/train-log` 查看底层日志。FTXUI 在训练期间会定时刷新当前阶段；**阶段 4/5 可能耗时较长，阶段编号不是准确的剩余时间百分比**。
+
+成功后：
+
+```text
+/models
+/load-model male_v1
+/source "D:\audio\female.wav"
+/output "D:\audio\result.wav"
+/convert
+```
+
+模型会自动登记到 `models/index.tsv`，在当前引擎菜单中也会尝试自动加载训练好的模型，无需自行查找 `.pth`。若在向导中填写测试音频，将在训练成功后自动生成独立的 `models/previews/*_preview.wav` 供试听，**不会自动播放、也不会覆盖已有文件**。Seed-VC 微调后的模型只用于 `/engine speech`，试听转换仍需 `/target` 参考录音。普通 WAV 试听文件可用系统音频播放器打开，程序不会自动执行或打开任何外部文件。
+
+**限制**：训练向导可减少常规配置，但不能保证所提供录音的版权、说话人身份、无伴奏或最终音色质量；也无法保证所有显卡都支持固定的 PyTorch/CUDA 组合。对真实 GPU 的完整训练、断点续训和端到端音质仍需在用户硬件上验证。
+
 
 ## 智能训练与模型管理（RVC / Seed-VC）
 
@@ -185,7 +231,7 @@ ctest --preset linux
 /train-legacy
 ```
 
-训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1\`，索引可链接到 `assets/indices`。
+训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1`，索引可链接到 `assets/indices`。
 
 - `epochs`：1..10000，实际训练效果需对照评估检查点；不是越大越好。
 - `batch`：1..128，显存不足时可降低；`/device cpu` 可用于排查/测试，但训练极慢。
@@ -324,7 +370,7 @@ py -3.12 -m venv .venv-rvc
 .\.venv-rvc\Scripts\python.exe -m pip install -r third_party/rvc/requirments_cpu_py312.txt
 ```
 
-GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt` 或 `requirments_cu128_py312.txt`，不可混装。RVC 训练还需 `assets/pretrained_v2/` 等模型资源；Seed-VC 初次推理也可能通过 Hugging Face 下载对应权重。本项目只内置引擎源码，**不会自动配置 Python 或下载全部模型权重**。 
+GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt` 或 `requirments_cu128_py312.txt`，不可混装。RVC 训练还需 `assets/pretrained_v2/` 等模型资源；Seed-VC 初次推理也可能通过 Hugging Face 下载对应权重。现在可通过自带脚本准备 Python 便携环境，智能 `/train` 按需检查/下载模型权重，部分官方组件仍可能另行下载。 
 
 ## 内置引擎来源与离线依赖
 
