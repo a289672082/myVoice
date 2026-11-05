@@ -316,10 +316,12 @@ CommandResult CommandShell::set_option(const std::string& command, const std::st
 // 新手训练向导把交互分成四个阶段；训练动作只在用户最后明确确认后发出。
 std::string CommandShell::wizard_hint() const {
     switch (wizard_step_) {
-        case WizardStep::Dataset: return "【步骤 1/4】请输入目标音色录音目录（可以直接粘贴 Windows 路径），/cancel 取消：";
-        case WizardStep::Name: return "【步骤 2/4】输入模型名称（英文字母、数字、_ 或 -；回车用原名称）：";
-        case WizardStep::Device: return "【步骤 3/4】输入 auto（推荐）/cpu/cuda；回车自动检测：";
-        case WizardStep::Confirm: return "【步骤 4/4】核对配置，输入「确认」开始训练，/cancel 退出：";
+        case WizardStep::Dataset: return "【步骤 1】请输入目标音色录音目录（可粘贴 Windows 路径），/cancel 取消：";
+        case WizardStep::Name: return "【步骤 2】输入模型名称（英文/数字/_/-；直接回车使用默认名称）：";
+        case WizardStep::Device: return "【步骤 3】选择 auto（推荐）/cpu/cuda；回车自动检测：";
+        case WizardStep::PreviewSource: return "【步骤 4】可选：输入用于试听的测试音频 WAV 路径；直接回车跳过试听：";
+        case WizardStep::PreviewTarget: return "【步骤 5】Seed-VC 试听需要目标音色参考 WAV；回车取消试听：";
+        case WizardStep::Confirm: return "【最后确认】输入「确认」开始训练，/cancel 放弃：";
         case WizardStep::None: return {};
     }
     return {};
@@ -366,14 +368,42 @@ CommandResult CommandShell::execute(const std::string& line) {
                 wizard_request_.batch_size = 0;
                 wizard_request_.gpu = -1;
                 wizard_request_.smart = true;
-                wizard_step_ = WizardStep::Confirm;
+                wizard_request_.preview_source.clear();
+                wizard_request_.preview_target.clear();
+                wizard_step_ = WizardStep::PreviewSource;
+                return {CommandAction::None, wizard_hint(), true};
+            }
+            if (wizard_step_ == WizardStep::PreviewSource ||
+                wizard_step_ == WizardStep::PreviewTarget) {
+                if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') ||
+                    (value.front() == 39 && value.back() == 39)))
+                    value = value.substr(1, value.size()-2);
+                if (!value.empty() && !fs::is_regular_file(as_path(value)))
+                    throw std::invalid_argument("试听文件不存在：" + value);
+                if (wizard_step_ == WizardStep::PreviewSource) {
+                    wizard_request_.preview_source = value.empty() ? fs::path{} :
+                                                     fs::absolute(as_path(value));
+                    wizard_step_ = (menu_ == ConsoleMenu::SeedVC &&
+                                    !wizard_request_.preview_source.empty()) ?
+                                   WizardStep::PreviewTarget : WizardStep::Confirm;
+                } else {
+                    wizard_request_.preview_target = value.empty() ? fs::path{} :
+                                                     fs::absolute(as_path(value));
+                    if (wizard_request_.preview_target.empty())
+                        wizard_request_.preview_source.clear();
+                    wizard_step_ = WizardStep::Confirm;
+                }
+                if (wizard_step_ != WizardStep::Confirm)
+                    return {CommandAction::None, wizard_hint(), true};
+                value.clear();
                 return {CommandAction::None,
-                    "请确认以下训练配置（尚未启动）：\n"
-                    "引擎：" + menu_name() +
-                    "\n素材：" + as_string(wizard_request_.dataset) +
+                    "请核对配置：\n引擎：" + menu_name() +
+                    "\n录音：" + as_string(wizard_request_.dataset) +
                     "\n模型：" + wizard_request_.name +
-                    "\n设备：" + value + "（批大小和 GPU 编号自动选择）\n"
-                    "训练会按需下载预训练权重，可能占用较大磁盘空间。\n" +
+                    "\n设备：" + wizard_request_.device +
+                    "\n试听：" + (wizard_request_.preview_source.empty() ?
+                        "跳过" : as_string(wizard_request_.preview_source)) +
+                    "\n说明：开始后可能下载较大预训练模型；不会自动覆盖已有试听音频。\n" +
                     wizard_hint(), true};
             }
             if (wizard_step_ == WizardStep::Confirm) {
@@ -417,6 +447,8 @@ CommandResult CommandShell::execute(const std::string& line) {
             if (normalized == "/train-wizard") {
                 wizard_request_ = active_training();
                 wizard_request_.smart = true;
+                wizard_request_.preview_source.clear();
+                wizard_request_.preview_target.clear();
                 wizard_request_.device = "auto";
                 wizard_request_.batch_size = 0;
                 wizard_request_.gpu = -1;

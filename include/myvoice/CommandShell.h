@@ -55,7 +55,7 @@ public:
     [[nodiscard]] std::string wizard_hint() const;
 
 private:
-    enum class WizardStep { None, Dataset, Name, Device, Confirm };
+    enum class WizardStep { None, Dataset, Name, Device, PreviewSource, PreviewTarget, Confirm };
     WizardStep wizard_step_ = WizardStep::None;
     TrainingRequest wizard_request_;
     ConsoleMenu menu_ = ConsoleMenu::Main;

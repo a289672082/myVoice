@@ -67,6 +67,7 @@ int main() {
             check(!shell.execute("wrong name with spaces").success, "wizard rejects unsafe model name");
             check(shell.execute("seed_voice_wizard").success, "wizard model name");
             check(shell.execute("auto").success, "wizard automatic GPU choice");
+            check(shell.execute("").success, "wizard skips optional preview");
             check(shell.execute("无效确认").success == false, "wizard requires explicit confirmation");
             check(shell.execute("确认").action == CommandAction::Train, "wizard launches Seed fine-tune");
             check(!shell.wizard_active() && shell.seed_training.smart &&

@@ -36,6 +36,7 @@ __pycache__/
 
 # 用户训练数据 / 音质检查报告 / 模型索引（保留 C++/Python 源码，不提交用户音色）
 /models/index.tsv
+/models/previews/
 /third_party/seed-vc/runs/
 /third_party/rvc/logs/
 *.myvoice_quality_report.json

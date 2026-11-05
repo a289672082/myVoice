@@ -2,6 +2,7 @@
 #include "myvoice/VoiceConverter.h"
 #include "myvoice/VoiceTrainer.h"
 #include "myvoice/EnginePaths.h"
+#include "myvoice/ModelRegistry.h"
 
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
@@ -133,6 +134,40 @@ int run_tui() {
                         if (!result.primary_model.empty())
                             outcome += " | 已注册: " + result.primary_model.string();
 #endif
+                        if (!result.primary_model.empty() && !training.preview_source.empty()) {
+                            // 试听样本是可选的：转换失败不影响已经成功训练并登记的模型。
+                            try {
+                                auto preview = request;
+                                preview.source = training.preview_source;
+                                preview.overwrite = false;
+                                if (training.engine == myvoice::TrainingEngine::SeedVC) {
+                                    preview.mode = myvoice::Mode::Speech;
+                                    preview.target = training.preview_target;
+                                    preview.seed_cfm_model = result.primary_model;
+                                    preview.seed_ar_model = result.secondary_model;
+                                } else {
+                                    preview.mode = myvoice::Mode::Rvc;
+                                    preview.trained_model = result.primary_model;
+                                }
+                                auto previews = myvoice::default_model_registry().parent_path() / "previews";
+                                std::filesystem::create_directories(previews);
+                                // 新文件名包含唯一时间戳，避免覆盖任何已有试听结果。
+                                const auto stamp = std::to_string(
+                                    std::chrono::steady_clock::now().time_since_epoch().count());
+                                preview.output = previews /
+                                    (training.name + "_" + stamp + "_preview.wav");
+                                const auto heard = myvoice::VoiceConverter(config).convert(preview);
+#ifdef _WIN32
+                                outcome += " | 已生成试听音频：" + heard.output.u8string();
+#else
+                                outcome += " | 已生成试听音频：" + heard.output.string();
+#endif
+                            } catch (const std::exception& ex) {
+                                outcome += " | 模型已训练成功，但试听生成失败：" + std::string(ex.what());
+                            }
+                        } else if (!result.primary_model.empty()) {
+                            outcome += " | 可使用 /models、/load-model 加载，/source、/convert 试听";
+                        }
                     } else {
                         const auto result = myvoice::VoiceConverter(config).convert(request);
 #ifdef _WIN32
