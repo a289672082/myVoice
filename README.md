@@ -58,7 +58,7 @@ bash scripts/get_portable_python.sh all
 /train-wizard
 ```
 
-向导按中文提示依次询问：①训练录音目录；②模型名称；③设备（直接回车默认 \`auto\`）；④核对配置并输入 **确认**。输入 \`/cancel\` 可随时退出，取消时不会修改已有训练参数；**最后确认前不会开始训练或下载大型权重**。Seed-VC 内同样支持 \`/train-wizard\`，专门运行 V2 CFM 微调。
+向导按中文提示依次询问：①训练录音目录；②模型名称；③设备（直接回车默认 `auto`）；④可选试听样本 WAV（回车跳过，Seed-VC 还会询问目标参考录音）；⑤核对配置并输入 **确认**。输入 `/cancel` 可随时退出，取消时不会修改已有训练参数；**最后确认前不会开始训练或下载大型权重**。Seed-VC 内同样支持 `/train-wizard`，专门运行 V2 CFM 微调。
 
 ### GPU 自动检查与配置
 
@@ -71,14 +71,14 @@ bash scripts/get_portable_python.sh all
 /train-wizard
 ```
 
-- \`/gpu-check\`：只读 \`nvidia-smi\` 检查 GPU 型号、驱动和计算能力，**不下载文件**。
-- \`/gpu-setup\`：用户明确执行后下载官方固定版本的 uv 与 PyTorch CUDA 12.1，复制仓库 CPU 便携 Python 到独立的 \`runtime/windows-x64/rvc-gpu/\`（Linux 相应目录），在新环境中安装 CUDA 依赖并做真实 GPU 张量测试。**原 CPU Python 不会被覆盖**。
-- 验证通过后生成 \`myvoice-gpu-ready.json\`，后续训练/推理自动优先使用该 GPU Python。Seed-VC 对应 \`/Seed-VC\` 子菜单与 \`seed-vc-gpu/\`。
+- `/gpu-check`：只读 `nvidia-smi` 检查 GPU 型号、驱动和计算能力，**不下载文件**。
+- `/gpu-setup`：用户明确执行后下载官方固定版本的 uv 与 PyTorch CUDA 12.1，复制仓库 CPU 便携 Python 到独立的 `runtime/windows-x64/rvc-gpu/`（Linux 相应目录），在新环境中安装 CUDA 依赖并做真实 GPU 张量测试。**原 CPU Python 不会被覆盖**。
+- 验证通过后生成 `myvoice-gpu-ready.json`，后续训练/推理自动优先使用该 GPU Python。Seed-VC 对应 `/Seed-VC` 子菜单与 `seed-vc-gpu/`。
 - 检测到不支持的显卡、旧驱动或下载/安装失败时明确报错，并保持 CPU 运行环境可用；不会自动安装或更新显卡驱动。GPU 包可能需要几 GB 磁盘及大量下载流量。若 PyTorch 2.4.x 不支持较新显卡（例如部分 RTX 50 系列），请等待经验证的新版本，不强行安装。
 
 ### 训练进度与试听
 
-开始训练后可输入 \`/train-status\` 查看阶段（**音频筛选 → GPU/CPU 检测 → 下载权重 → 执行训练 → 注册模型**），或 \`/train-log\` 查看底层日志。FTXUI 在训练期间会定时刷新当前阶段；**阶段 4/5 可能耗时较长，阶段编号不是准确的剩余时间百分比**。
+开始训练后可输入 `/train-status` 查看阶段（**音频筛选 → GPU/CPU 检测 → 下载权重 → 执行训练 → 注册模型**），或 `/train-log` 查看底层日志。FTXUI 在训练期间会定时刷新当前阶段；**阶段 4/5 可能耗时较长，阶段编号不是准确的剩余时间百分比**。
 
 成功后：
 
@@ -90,7 +90,7 @@ bash scripts/get_portable_python.sh all
 /convert
 ```
 
-模型会自动登记到 \`models/index.tsv\`，无需自行查找 \`.pth\`。Seed-VC 微调后的模型只用于 \`/engine speech\`，试听转换仍需 \`/target\` 参考录音。普通 WAV 试听文件可用系统音频播放器打开，程序不会自动执行或打开任何外部文件。
+模型会自动登记到 `models/index.tsv`，无需自行查找 `.pth`。若在向导中填写测试音频，将在训练成功后自动生成独立的 `models/previews/*_preview.wav` 供试听，**不会自动播放、也不会覆盖已有文件**。Seed-VC 微调后的模型只用于 `/engine speech`，试听转换仍需 `/target` 参考录音。普通 WAV 试听文件可用系统音频播放器打开，程序不会自动执行或打开任何外部文件。
 
 **限制**：训练向导可减少常规配置，但不能保证所提供录音的版权、说话人身份、无伴奏或最终音色质量；也无法保证所有显卡都支持固定的 PyTorch/CUDA 组合。对真实 GPU 的完整训练、断点续训和端到端音质仍需在用户硬件上验证。
 
@@ -231,7 +231,7 @@ ctest --preset linux
 /train-legacy
 ```
 
-训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1\`，索引可链接到 `assets/indices`。
+训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1`，索引可链接到 `assets/indices`。
 
 - `epochs`：1..10000，实际训练效果需对照评估检查点；不是越大越好。
 - `batch`：1..128，显存不足时可降低；`/device cpu` 可用于排查/测试，但训练极慢。

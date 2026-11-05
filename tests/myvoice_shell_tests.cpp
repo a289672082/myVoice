@@ -3,6 +3,8 @@
 #include "myvoice/EnginePaths.h"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -22,6 +24,34 @@ int main() {
         myvoice::CommandShell shell;
         check(myvoice::resolve_runtime_python("custom-python", "rvc") ==
                   std::filesystem::path("custom-python"), "explicit /python override");
+        // 临时构造一个 CPU/GPU 便携目录，验证不会误查 Linux 的 rvc/rvc-gpu 路径。
+        {
+            namespace fs = std::filesystem;
+            const auto original = fs::current_path();
+            const auto tmp = fs::temp_directory_path() /
+                ("myvoice-gpu-runtime-test-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()));
+#ifdef _WIN32
+            const fs::path cpu = tmp / "runtime/windows-x64/rvc/python.exe";
+            const fs::path gpu = tmp / "runtime/windows-x64/rvc-gpu/python.exe";
+#else
+            const fs::path cpu = tmp / "runtime/linux-x64/rvc/bin/python3";
+            const fs::path gpu = tmp / "runtime/linux-x64/rvc-gpu/bin/python3";
+#endif
+            fs::create_directories(cpu.parent_path());
+            fs::create_directories(gpu.parent_path());
+            { std::ofstream out(cpu); out << "cpu"; }
+            { std::ofstream out(gpu); out << "gpu"; }
+            fs::current_path(tmp);
+            check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(cpu),
+                  "CPU runtime selected without ready marker");
+            { std::ofstream ready(gpu.parent_path().parent_path() / "myvoice-gpu-ready.json");
+              ready << "{}"; }
+            check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(gpu),
+                  "GPU runtime selected when marker and interpreter exist");
+            fs::current_path(original);
+            fs::remove_all(tmp);
+        }
         bool runtime_not_found = false;
         try { (void)myvoice::resolve_runtime_python({}, "rvc"); }
         catch (const std::invalid_argument&) { runtime_not_found = true; }
