@@ -40,13 +40,13 @@ int run_tui() {
         if (log.size() > 150) log.erase(log.begin(), log.begin() + 50);
     };
     const auto submit = [&] {
-        if (line.empty()) return;
+        if (line.empty() && !shell.wizard_active()) return;
         const std::string command = line;
         history.push_back(command);
         history_pos = history.size();
-        line = "/";
-        log_message("> " + command);
+        log_message("> " + (command.empty() ? "（使用默认值）" : command));
         const auto result = shell.execute(command);
+        line = shell.wizard_active() ? "" : "/";
         if (!result.success) {
             log_message("错误：" + result.message);
             return;
@@ -153,6 +153,7 @@ int run_tui() {
             completion.push_back(text(hints[i].display) | dim);
         if (completion.empty()) completion.push_back(text("输入 / 选择命令；Tab 补全命令、路径与枚举参数") | dim);
         return vbox({
+            (shell.wizard_active() ? text(shell.wizard_hint()) | color(Color::Yellow) : text("")),
             text(" myVoice / " + shell.menu_name() + "  |  中文语音转换控制台 ") | bold | color(Color::Cyan),
             separator(),
             text(busy.load() ? "状态：" + current_job + "..." : "状态：就绪") |
@@ -164,7 +165,9 @@ int run_tui() {
             vbox(std::move(completion)),
             text(shell.menu() == myvoice::ConsoleMenu::Main ?
                 "回车执行 | Tab 补全 | ↑↓ 历史命令 | /Seed-VC 声音转换 | /RVC 模型训练 | /quit 退出" :
-                "回车执行 | Tab 补全 | /train 智能训练 | /models 模型列表 | /load-model 加载 | /back 返回") | dim
+                (shell.wizard_active() ?
+                 "新手向导：按提示输入内容并回车，/cancel 取消；没有 / 前缀" :
+                 "回车执行 | Tab 补全 | /train-wizard 新手向导 | /train 智能训练 | /models 模型列表 | /back 返回")) | dim
         }) | border;
     });
     app.Loop(view);

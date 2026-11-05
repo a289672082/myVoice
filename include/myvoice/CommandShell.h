@@ -50,8 +50,14 @@ public:
     // 中文参数概览与当前子菜单的中文使用指南。
     [[nodiscard]] std::string summary() const;
     [[nodiscard]] std::string help() const;
+    // 新手向导只在交互式 FTXUI 中使用：步骤输入可不带 /，确认前不修改训练配置。
+    [[nodiscard]] bool wizard_active() const noexcept { return wizard_step_ != WizardStep::None; }
+    [[nodiscard]] std::string wizard_hint() const;
 
 private:
+    enum class WizardStep { None, Dataset, Name, Device, Confirm };
+    WizardStep wizard_step_ = WizardStep::None;
+    TrainingRequest wizard_request_;
     ConsoleMenu menu_ = ConsoleMenu::Main;
     Configuration seed_configuration_;
     Configuration rvc_configuration_;

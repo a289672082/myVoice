@@ -53,7 +53,26 @@ int main() {
         check(!shell.execute("/back").success, "no /back in main");
         check(!shell.execute("/Seed-VC argument").success, "navigation takes no arguments");
 
+        // 中文交互式向导：确认前不修改配置，取消不启动训练，错误输入可重试。
         check(shell.execute("/Seed-VC").success, "enter seed menu");
+        {
+            const auto old_name = shell.seed_training.name;
+            check(shell.execute("/train-wizard").success && shell.wizard_active(), "start Seed wizard");
+            check(!shell.execute("not-existing-voice-folder").success, "wizard rejects missing data folder");
+            check(shell.execute("/cancel").success && !shell.wizard_active(), "wizard cancellation");
+            check(shell.seed_training.name == old_name, "wizard cancel should not modify training");
+            check(shell.execute("/train-wizard").success, "restart Seed wizard");
+            check(shell.execute(std::filesystem::current_path().string()).success,
+                  "wizard accepts existing folder");
+            check(!shell.execute("wrong name with spaces").success, "wizard rejects unsafe model name");
+            check(shell.execute("seed_voice_wizard").success, "wizard model name");
+            check(shell.execute("auto").success, "wizard automatic GPU choice");
+            check(shell.execute("无效确认").success == false, "wizard requires explicit confirmation");
+            check(shell.execute("确认").action == CommandAction::Train, "wizard launches Seed fine-tune");
+            check(!shell.wizard_active() && shell.seed_training.smart &&
+                  shell.seed_training.name == "seed_voice_wizard" &&
+                  shell.seed_training.device == "auto", "wizard commits correct training request");
+        }
         check(shell.menu() == ConsoleMenu::SeedVC, "must be in Seed-VC menu");
         check(contains(shell.suggestions("/con"), "/convert"), "Seed-VC conversion completion");
         check(contains(shell.suggestions("/engine s"), "/engine speech"), "Seed-VC engine suggestion");
