@@ -19,6 +19,12 @@ import sys
 import tempfile
 import time
 
+# Windows 非 UTF-8 代码页（CI cp1252 / 传统控制台）也能可靠记录中文日志。
+# stdout/stderr 被 C++ 捕获到日志文件；使用 UTF-8 避免 UnicodeEncodeError。
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".opus"}
 REPO = Path(__file__).resolve().parents[1]
