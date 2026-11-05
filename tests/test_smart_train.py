@@ -127,6 +127,11 @@ class Tests(unittest.TestCase):
             self.assertEqual(len(models), 2)
             self.assertTrue(any(s.startswith("rvc\trvc\t") for s in models))
             self.assertTrue(any(s.startswith("seed-vc\tseed_vc\t") for s in models))
+            for engine, name in (("rvc", "rvc"), ("seed-vc", "seed_vc")):
+                root_dir = root / engine / ("logs" if engine == "rvc" else "runs") / name
+                progress = (root_dir / "myvoice_progress.txt").read_text(encoding="utf-8")
+                self.assertIn("成功", progress)
+                self.assertIn("5/5", progress)
 
 if __name__ == "__main__":
     unittest.main()

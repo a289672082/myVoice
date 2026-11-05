@@ -57,6 +57,7 @@ constexpr CommandInfo kSeed[] = {
     {"/train-timeout", "/train-timeout <秒>", "训练超时"},
     {"/train", "/train", "自动质检录音、准备权重并微调 Seed-VC V2 CFM"},
     {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/train-status", "/train-status", "读取实时训练阶段和状态（不显示虚构百分比）"},
     {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
     {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "查看微调日志"},
@@ -96,6 +97,7 @@ constexpr CommandInfo kRvc[] = {
     {"/train-script", "/train-script <路径>", "自定义 RVC 训练桥接脚本"},
     {"/train", "/train", "自动检查录音与权重、选择显卡并训练 RVC"},
     {"/train-wizard", "/train-wizard", "中文新手向导：选录音、命名、设备、确认训练"},
+    {"/train-status", "/train-status", "读取实时训练阶段和状态（不显示虚构百分比）"},
     {"/gpu-check", "/gpu-check", "检查 NVIDIA 显卡、驱动及 CUDA 支持情况（不下载）"},
     {"/gpu-setup", "/gpu-setup", "经用户确认，安装独立 CUDA GPU 运行环境"},
     {"/train-log", "/train-log", "读取训练日志尾部"},
@@ -395,7 +397,8 @@ CommandResult CommandShell::execute(const std::string& line) {
             normalized == "/convert" || normalized == "/train" || normalized == "/train-legacy" ||
             normalized == "/train-log" || normalized == "/models" ||
             normalized == "/quality-report" || normalized == "/unload-model" ||
-            normalized == "/train-wizard" || normalized == "/gpu-check" ||
+            normalized == "/train-wizard" || normalized == "/train-status" ||
+            normalized == "/gpu-check" ||
             normalized == "/gpu-setup" || normalized == "/quit";
         if (no_value) {
             if (args.size() != 1) throw std::invalid_argument(key + " 不需要附加参数");
@@ -454,6 +457,27 @@ CommandResult CommandShell::execute(const std::string& line) {
                     seed ? "train_v2.py" : "train/train.py");
                 return {CommandAction::None, as_string(root /
                     (seed ? "runs" : "logs") / tr.name / "myvoice_quality_report.json"), true};
+            }
+            if (normalized == "/train-status") {
+                const bool seed = menu_ == ConsoleMenu::SeedVC;
+                const auto& cfg = seed ? seed_training_configuration : training_configuration;
+                const auto& tr = seed ? seed_training : training;
+                const fs::path root = resolve_engine_root(
+                    seed ? cfg.seed_vc_root : cfg.rvc_root,
+                    seed ? "seed-vc" : "rvc",
+                    seed ? "train_v2.py" : "train/train.py");
+                const auto status_file = root / (seed ? "runs" : "logs") / tr.name /
+                                         "myvoice_progress.txt";
+                std::ifstream input(status_file, std::ios::binary);
+                if (!input) return {CommandAction::None,
+                    "尚未开始智能训练或暂无进度文件。输入 /train-wizard 开始。", true};
+                std::string state, step, description;
+                std::getline(input, state);
+                std::getline(input, step);
+                std::getline(input, description);
+                return {CommandAction::None,
+                    "训练状态：" + state + " | 阶段：" + step + " | " + description +
+                    "\n进度为工作阶段，不代表准确耗时百分比。", true};
             }
             if (normalized == "/train-log") {
                 const bool seed = menu_ == ConsoleMenu::SeedVC;

@@ -1,6 +1,7 @@
 #include "myvoice/CommandShell.h"
 #include "myvoice/VoiceConverter.h"
 #include "myvoice/VoiceTrainer.h"
+#include "myvoice/EnginePaths.h"
 
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
@@ -9,6 +10,8 @@
 #include <ftxui/dom/elements.hpp>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -33,6 +36,8 @@ int run_tui() {
     std::atomic<bool> busy{false};
     std::string current_job;
     std::thread worker;
+    std::thread refresh_worker;  // 只负责触发 UI 更新，不直接修改控件。
+    std::filesystem::path live_progress;
 
     // 日志统一保留换行，防止 Python 多行信息覆盖当前 FTXUI 控件。
     const auto log_message = [&](const std::string& message) {
@@ -77,11 +82,34 @@ int run_tui() {
             const auto training = shell.active_training();
             const auto training_config = shell.active_training_configuration();
             const auto engine_name = shell.menu_name();
+            live_progress.clear();
+            if (is_training) {
+                try {
+                    const bool seed = training.engine == myvoice::TrainingEngine::SeedVC;
+                    const auto root = myvoice::resolve_engine_root(
+                        seed ? training_config.seed_vc_root : training_config.rvc_root,
+                        seed ? "seed-vc" : "rvc",
+                        seed ? "train_v2.py" : "train/train.py");
+                    live_progress = root / (seed ? "runs" : "logs") / training.name /
+                                    "myvoice_progress.txt";
+                } catch (const std::exception&) {
+                    // 训练器会输出具体的路径错误，TUI 不提前中断任务。
+                }
+            }
             current_job = is_training ? "训练中" : is_gpu ? "检查/配置 GPU" : "转换中";
             log_message(is_training ? "正在后台训练 " + engine_name + "：" + training.name +
                 " （输入 /train-status 查看进度，/train-log 查看日志）" :
                 is_gpu ? "GPU 操作正在后台进行；完成后显示检查结果..." :
                 "正在后台运行 " + shell.menu_name() + "，请查看状态栏...");
+            if (refresh_worker.joinable()) refresh_worker.join();
+            if (is_training) {
+                refresh_worker = std::thread([&] {
+                    while (busy.load()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(900));
+                        app.PostEvent(Event::Custom);
+                    }
+                });
+            }
             worker = std::thread([&, config, request, is_training, is_gpu, gpu_check_only, training, training_config] {
                 std::string outcome;
                 try {
@@ -170,8 +198,20 @@ int run_tui() {
         for (std::size_t i = 0; i < std::min<std::size_t>(hints.size(), 6); ++i)
             completion.push_back(text(hints[i].display) | dim);
         if (completion.empty()) completion.push_back(text("输入 / 选择命令；Tab 补全命令、路径与枚举参数") | dim);
+        std::string live_status;
+        if (!live_progress.empty()) {
+            std::ifstream input(live_progress, std::ios::binary);
+            if (input) {
+                std::string state, stage, description;
+                std::getline(input, state);
+                std::getline(input, stage);
+                std::getline(input, description);
+                live_status = "训练状态：" + state + " | 阶段 " + stage + " | " + description;
+            }
+        }
         return vbox({
             (shell.wizard_active() ? text(shell.wizard_hint()) | color(Color::Yellow) : text("")),
+            text(live_status) | color(Color::Cyan),
             text(" myVoice / " + shell.menu_name() + "  |  中文语音转换控制台 ") | bold | color(Color::Cyan),
             separator(),
             text(busy.load() ? "状态：" + current_job + "..." : "状态：就绪") |
@@ -190,5 +230,6 @@ int run_tui() {
     });
     app.Loop(view);
     if (worker.joinable()) worker.join();
+    if (refresh_worker.joinable()) refresh_worker.join();
     return 0;
 }
