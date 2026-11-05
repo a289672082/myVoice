@@ -267,12 +267,13 @@ myVoice / 主菜单
 # RVC 训练
 .\build\vs2022\Release\myvoice_cli.exe `
   /RVC /python "D:\myVoice\.venv-rvc\Scripts\python.exe" `
-  /train-name male_v1 /epochs 200 /batch 4 /train
+  /dataset "D:\voice_data\male" /train-name male_v1 /epochs 200 /batch 4 /train
 
 # Seed-VC 文件转换
 .\build\vs2022\Release\myvoice_cli.exe `
   /Seed-VC /python "D:\myVoice\.venv-seed\Scripts\python.exe" `
-  /target "D:\audio\male.wav" /output "D:\audio\result.wav" /convert
+  /source "D:\audio\female.wav" /target "D:\audio\male.wav" `
+  /output "D:\audio\result.wav" /convert
 ```
 
 脚本不会自动运行转换：`/convert` 或 `/train` 必须位于最后一个参数；否则只设置并显示选项。`/help` 显示当前菜单帮助。例如 `myvoice_cli /RVC /help`。失败时输出非零退出码。
