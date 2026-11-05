@@ -4,7 +4,7 @@ Windows / Linux 跨平台 C++17 + FTXUI 语音转换程序，附带可直接打�
 
 **FTXUI、RVC、Seed-VC 的源码都已直接检入本仓库**，位于 `third_party/`，不是 Git 子模块，不需要 CMake/运行时从 GitHub 下载引擎源码。FTXUI 为 MIT；RVC 为 MIT；Seed-VC 为 GPL-3.0，详见各自 `LICENSE`。请分别遵守对应许可。
 
-**重要限制：** 此次内置的是源码而不是完整 AI 离线运行环境。PyTorch、CUDA、Python 第三方包、HuBERT/RMVPE、Seed-VC 所需检查点等大型预训练模型权重仍需要单独准备；因此 **C++ 编译离线可行，首次模型运行不保证离线**。不包含第三方示例歌曲或人物录音。
+**重要限制：** 此次内置的是源码，便携 Python 运行包单独通过同仓库 Releases 分发，而不是完整的离线 AI 运行环境。PyTorch、CUDA、Python 第三方包、HuBERT/RMVPE、Seed-VC 所需检查点等大型预训练模型权重仍需要单独准备；因此 **C++ 编译离线可行，首次模型运行不保证离线**。不包含第三方示例歌曲或人物录音。
 
 | 引擎 | 默认源码目录 | 功能 |
 |---|---|---|
@@ -12,10 +12,42 @@ Windows / Linux 跨平台 C++17 + FTXUI 语音转换程序，附带可直接打�
 | RVC | `third_party/rvc/` | 已训练模型推理、RVC V2 训练 |
 | Seed-VC | `third_party/seed-vc/` | V2 讲话、V1 歌声零样本转换 |
 
-两个引擎使用自己的 Python 环境和权重文件；`/rvc-root`、`/seed-root` 是可选覆盖参数，不再要求单独克隆源码仓库。使用 `/show` 查看当前引擎参数。训练出来的 RVC 模型不能直接由 Seed-VC 加载。
+两个引擎使用自己独立的便携 Python 环境和权重文件；`/rvc-root`、`/seed-root` 是可选覆盖参数，不再要求单独克隆源码仓库。使用 `/show` 查看当前引擎参数。训练出来的 RVC 模型不能直接由 Seed-VC 加载。
 
 Windows / Linux 跨平台 **C++17 + FTXUI** 语音转换与 **RVC V2 目标音色训练** 项目。可在 **Visual Studio 2022** 中使用 CMake 工程（自动生成 `.sln`）。命令统一以 `/` 开头。**先输入 `/Seed-VC` 或 `/RVC` 进入引擎专属子菜单**，再执行该引擎的命令；支持实时命令提示、Tab 补全、文件路径补全和历史命令。
 
+
+## 免安装 Python 完整运行包（Windows / Linux）
+
+**不是安装包**：每个压缩包包含对应平台的 CPython 可执行程序、标准库及构建阶段安装的第三方 Python 依赖（含 CPU 版 PyTorch / Torchaudio），解压即可由 myVoice 调用。RVC 与 Seed-VC 使用独立的目录，避免依赖版本相互冲突：
+
+```text
+runtime/
+  windows-x64/
+    rvc/python.exe
+    seed-vc/python.exe
+  linux-x64/
+    rvc/bin/python3
+    seed-vc/bin/python3
+```
+
+这些二进制依赖体积通常数百 MB 至数 GB，GitHub 普通 Git 文件有大小限制。因此 **Python 运行包作为同一 myVoice 仓库的 GitHub Release 附件发布**，不会将巨型二进制写入 Git 历史。源码、生成脚本和清单都在本仓库，下载或解压后就位于本仓库根目录的 `runtime/` 里。可直接下载对应 ZIP 解压，或使用仓库附带的下载命令：
+
+```powershell
+# Windows PowerShell，无须预先安装 Python
+.\scripts\get_portable_python.ps1 -Engine all
+```
+
+```bash
+# Linux x86-64，需要 curl 或 wget 和 unzip；无须系统 Python
+bash scripts/get_portable_python.sh all
+```
+
+然后在 FTXUI 内进入 `/Seed-VC` 或 `/RVC`，直接配置音频/模型并使用 `/convert`、`/train`，**无需输入 `/python`、也不会回退到系统 Python**。如需自定义解释器，原有 `/python` 仍有效。
+
+[查看 Portable Python 发布页面](https://github.com/a289672082/myVoice/releases/tag/portable-python-v1)；[构建及来源说明](runtime/README.md)。
+
+**边界：** 提供的是 Python + Python 扩展包的 CPU 版本；NVIDIA CUDA 驱动、GPU 运行包，以及 RVC/Seed-VC 的 HuBERT/RMVPE/Seed-VC 预训练权重不在这些压缩包中。CPU 可用于先验证流程，但实际训练与长音频推理可能很慢。Python 依赖的复制与重定位必须经过 Windows/Linux 运行测试；未发布通过校验的附件之前不能称为已完成完整免安装部署。
 
 ## 功能
 
@@ -222,6 +254,6 @@ GPU 环境要选择合适 CUDA/torch 组合与 RVC `requirments_cu118_py312.txt`
 
 ## 内置引擎来源与离线依赖
 
-详见 [third_party/ENGINES.md](third_party/ENGINES.md)。默认 Python 可执行文件仍是 `python`（Windows）或 `python3`（Linux）；不同引擎若装在不同 Python 虚拟环境，可进入对应子菜单后使用 `/python <可执行文件>` 独立配置。
+详见 [third_party/ENGINES.md](third_party/ENGINES.md)。默认 Python 可执行文件仍是 `python`（Windows）或 `python3`（Linux）；不同引擎若装在不同 Python 虚拟环境，可进入对应子菜单后使用 `/python <可执行文件>` 覆盖自动选择。
 
 **迁移提示：** 老版本的 `/rvc-root` / `/seed-root` 配置仍有效，显式指定时优先于内置路径。现在不设置它们也可以调用源码，但启动训练或转换前依然必须配置对应 Python 依赖、模型权重和授权音频数据。

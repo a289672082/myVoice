@@ -9,11 +9,7 @@ namespace myvoice {
 enum class Mode { Speech, Singing, Rvc };
 
 struct Configuration {
-#ifdef _WIN32
-    std::filesystem::path python = L"python";
-#else
-    std::filesystem::path python = "python3";
-#endif
+std::filesystem::path python; // 默认自动定位 runtime/<平台>/<引擎>/ 的便携运行时；/python 可覆盖
     std::filesystem::path seed_vc_root;
     std::filesystem::path rvc_root;
     std::chrono::milliseconds timeout{900000};

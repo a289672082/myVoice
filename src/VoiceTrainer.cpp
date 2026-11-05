@@ -1,4 +1,5 @@
 #include "myvoice/VoiceTrainer.h"
+#include "myvoice/PythonRuntime.h"
 #include "myvoice/EnginePaths.h"
 #include "Process.h"
 #include <algorithm>
@@ -81,7 +82,8 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
     };
     int code = 0;
     try {
-        code = detail::run_process(absolute_executable(configuration_.python), args,
+        code = detail::run_process(absolute_executable(resolve_runtime_python(
+                configuration_.python, "rvc")), args,
                                    root, configuration_.timeout, logfile);
     } catch (const std::exception& ex) {
         throw std::runtime_error(std::string("RVC training error: ") + ex.what() + "\n" + read_tail(logfile));

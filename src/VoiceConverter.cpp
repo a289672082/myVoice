@@ -1,4 +1,5 @@
 #include "myvoice/VoiceConverter.h"
+#include "myvoice/PythonRuntime.h"
 #include "myvoice/EnginePaths.h"
 #include "Process.h"
 
@@ -90,7 +91,8 @@ Result VoiceConverter::convert(const Request& request) const {
     if (!fs::is_regular_file(root / script))
         throw std::invalid_argument("Missing inference script: " + (root / script).string());
 
-    const auto python = normalized_executable(configuration_.python);
+    const auto python = normalized_executable(
+        resolve_runtime_python(configuration_.python, rvc ? "rvc" : "seed-vc"));
     TemporaryDirectory temporary;
     std::vector<fs::path> args;
     if (rvc) {

@@ -18,11 +18,7 @@ struct TrainingRequest {
     bool build_index = true;
 };
 struct TrainingConfiguration {
-#ifdef _WIN32
-    std::filesystem::path python = L"python";
-#else
-    std::filesystem::path python = "python3";
-#endif
+std::filesystem::path python; // 默认使用 runtime/<平台>/rvc/ 中的免安装 Python
     std::filesystem::path rvc_root;
     std::filesystem::path bridge_script; // 默认通过 CMake 定位 scripts/rvc_train.py。
     std::chrono::milliseconds timeout{std::chrono::hours(12)};
