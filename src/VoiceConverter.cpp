@@ -103,7 +103,19 @@ Result VoiceConverter::convert(const Request& request) const {
     } else {
         args = {script, "--source", source, "--target", target, "--output", temporary.path,
                 "--diffusion-steps", std::to_string(request.diffusion_steps)};
+        if (request.mode == Mode::Speech) {
+            if (!request.seed_cfm_model.empty()) {
+                args.insert(args.end(), {"--cfm-checkpoint-path",
+                                         existing_file(request.seed_cfm_model, "Seed-VC CFM model")});
+            }
+            if (!request.seed_ar_model.empty()) {
+                args.insert(args.end(), {"--ar-checkpoint-path",
+                                         existing_file(request.seed_ar_model, "Seed-VC AR model")});
+            }
+        }
         if (request.mode == Mode::Singing) {
+            if (!request.seed_cfm_model.empty() || !request.seed_ar_model.empty())
+                throw std::invalid_argument("Seed-VC V2 fine-tune checkpoints cannot be used in V1 singing mode");
             // 歌声默认保留旋律，避免意外移调。
             args.insert(args.end(), {"--f0-condition", "True", "--auto-f0-adjust", "False",
                                      "--semi-tone-shift", "0"});

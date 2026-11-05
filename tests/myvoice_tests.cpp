@@ -53,7 +53,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--source', required=True)
 parser.add_argument('--target', required=True)
 parser.add_argument('--output', required=True)
+parser.add_argument('--cfm-checkpoint-path', required=False)
+parser.add_argument('--ar-checkpoint-path', required=False)
 args, _ = parser.parse_known_args()
+if args.cfm_checkpoint_path:
+    assert pathlib.Path(args.cfm_checkpoint_path).is_file()
+if args.ar_checkpoint_path:
+    assert pathlib.Path(args.ar_checkpoint_path).is_file()
 if 'fail' in pathlib.Path(args.source).name:
     print('BACKEND_TEST_ERROR_MARKER', file=sys.stderr)
     sys.exit(13)
@@ -86,6 +92,17 @@ with wave.open(str(out / 'converted.wav'), 'wb') as wav:
         require(fs::file_size(req.output) > 44, "output WAV too small");
         require(throws([&] { (void)converter.convert(req); }), "existing file protection");
         req.overwrite = true;
+        file(ws.dir / "fine-tuned CFM.pth", "mock seed-vc CFM checkpoint");
+        file(ws.dir / "fine-tuned AR.pth", "mock seed-vc AR checkpoint");
+        req.mode = myvoice::Mode::Speech;
+        req.output = ws.dir / "fine tuned output.wav";
+        req.seed_cfm_model = ws.dir / "fine-tuned CFM.pth";
+        req.seed_ar_model = ws.dir / "fine-tuned AR.pth";
+        require(converter.convert(req).output == fs::absolute(req.output),
+                "Seed-VC V2 CFM/AR fine-tuned inference");
+        req.seed_cfm_model.clear();
+        req.seed_ar_model.clear();
+        req.output = ws.dir / "result.wav";
         req.mode = myvoice::Mode::Singing;
         require(converter.convert(req).output == fs::absolute(req.output), "speech/singing output path");
         req.output = req.source;

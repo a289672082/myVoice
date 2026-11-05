@@ -49,6 +49,73 @@ bash scripts/get_portable_python.sh all
 
 **边界：** 提供的是 Python + Python 扩展包的 CPU 版本；NVIDIA CUDA 驱动、GPU 运行包，以及 RVC/Seed-VC 的 HuBERT/RMVPE/Seed-VC 预训练权重不在这些压缩包中。CPU 可用于先验证流程，但实际训练与长音频推理可能很慢。Python 依赖的复制与重定位必须经过 Windows/Linux 运行测试；未发布通过校验的附件之前不能称为已完成完整免安装部署。
 
+## 智能训练与模型管理（RVC / Seed-VC）
+
+当前实现将以下步骤组合为一个命令：**自动筛查音频 → 检测 PyTorch 可用 GPU / 显存 → 按需下载官方预训练资源 → 调用对应官方训练脚本 → 检验输出 → 注册到 `models/index.tsv`**。
+
+### RVC 一键训练
+
+将得到合法授权的目标音色 WAV/FLAC 等音频放进一个目录，在 FTXUI 输入：
+
+```text
+/RVC
+/dataset "D:\voice_data\male"
+/train-name male_v1
+/device auto
+/batch auto
+/gpu auto
+/train
+```
+
+训练完成后：
+
+```text
+/models
+/load-model male_v1
+/source "D:\audio\female.wav"
+/output "D:\audio\result.wav"
+/convert
+```
+
+RVC 训练结果为 `third_party/rvc/assets/weights/male_v1.pth`，索引文件通常位于 RVC 资产目录。旧版手工调参训练可使用 `/train-legacy`（须显式设置 batch、workers、gpu、device）。
+
+### Seed-VC V2 专属微调
+
+Seed-VC 的模型不能使用 RVC 权重。进入它自己的菜单：
+
+```text
+/Seed-VC
+/dataset "D:\voice_data\male"
+/train-name male_seed_v2
+/train-steps 1000
+/device auto
+/batch auto
+/train
+```
+
+这会调用内置 Seed-VC `train_v2.py` 微调 **CFM**（AR 默认保留官方基础权重）。输出一般为 `third_party/seed-vc/runs/male_seed_v2/CFM_epoch_*_step_*.pth`，完成后自动登记 CFM 和对应 AR 文件。
+
+```text
+/models
+/load-model male_seed_v2
+/engine speech
+/source "D:\audio\female.wav"
+/target "D:\audio\male_reference.wav"
+/output "D:\audio\seed_result.wav"
+/convert
+```
+
+**Seed-VC V2 即使加载微调权重，仍然需要目标音色参考录音 `/target`。** 如需切换到 V1 歌声模式，先执行 `/unload-model` 清除 V2 检查点，再输入 `/engine singing`。 这些 V2 检查点只能通过 `speech` 加载，不能用于 Seed-VC V1 `singing`。
+
+### 自动管理的边界
+
+- `/quality-report` 显示 `myvoice_quality_report.json` 路径。自动筛选过短/过长、明显静音、明显削波、直流偏移、不可解码文件，并标记可能持续背景声的警告。**这不是人工音质检测，也不保证识别所有伴奏、错误说话人或合成伪影**。
+- `/device auto` 使用当前 Python/PyTorch 实际可识别的 CUDA 设备和显存决定批次；`/batch auto`、`/gpu auto` 允许自动配置。现有 Releases 提供的是 **CPU 版 PyTorch**，无法凭 NVIDIA 驱动自动获得 CUDA：GPU 训练仍需匹配的 CUDA PyTorch 运行环境（可用各引擎 `/python` 指定）。
+- 缺少预训练资源时，将从官方 Hugging Face 项目获取并复用缓存；可设置 `/offline on` 禁止网络下载，缺失时报错。网络下载只针对预定义模型，不使用不可信的任意权重 URL。
+- RVC 核心预训练模型包括 HuBERT、RMVPE、V2 F0 Generator/Discriminator；Seed-VC V2 的 CFM、AR 和编码器/说话人检查点也会提前检查。官方模型内部的 Whisper/BigVGAN 等依赖可能另行按需下载。
+- 训练输出成功并检查文件存在之后才会登记模型。索引是 `models/index.tsv`，无需手工移动权重；`/models` 列表及 `/load-model 名称` 支持 Tab 补全。登记索引和训练数据不会加入 Git。
+- 实际 GPU 训练、最终音色/高音质量未在 CI 中完成验证。CI 验证的是 Windows/Linux C++ 编译、独立训练菜单、音质分析和**模拟训练、权重下载、模型注册**。
+
 ## 功能
 
 | 功能 | 当前实现 |
@@ -57,13 +124,14 @@ bash scripts/get_portable_python.sh all
 | Windows / VS2022、Linux 编译 | ✅ CMake |
 | `/engine speech` | Seed-VC V2 零样本普通语音转换 |
 | `/engine singing` | Seed-VC V1 带 F0 条件歌声转换（默认不移调） |
-| `/train` | RVC V2 48k F0 单说话人训练、RMVPE、HuBERT、索引生成 |
-| `/engine rvc` | 使用训练后的 RVC `.pth` 文件进行离线推理 |
-| `/train-log` | 查看训练日志尾部 |
+| `/train` | RVC 自动训练；Seed-VC V2 CFM 微调；自动音质筛选、GPU、权重下载、注册模型 |
+| `/RVC` + `/model` / `/load-model` | 使用训练后的 RVC `.pth` 文件进行离线推理 |
+| `/train-log` | 查看 RVC / Seed-VC 对应训练日志尾部 |
+| `/models`、`/load-model` | 分引擎模型登记、列表与加载 |
 | 高音失真自动修复 / 自动音域映射 | **未实现**，不能保证消除女声高音转男声失真 |
 | 实时麦克风、GUI 训练参数面板、纯 C++ 模型训练 | **未实现** |
 
-训练流水线实际调用仓库内的 RVC Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
+自动训练会调用 RVC/Seed-VC 各自的 Python 训练脚本，C++ 负责参数校验、子进程调度、超时、日志和 FTXUI 操作。**未经真实 GPU、模型权重及语音样本验证最终音质**，仅已完成模拟训练/转换测试。
 
 ## VS2022 原生解决方案（可直接双击）
   
@@ -95,7 +163,7 @@ ctest --preset linux
 
 如只需命令行无 TUI，可以加 `-DMYVOICE_WITH_FTXUI=OFF`。FTXUI 源码无需重新下载。CI 同时构建两个平台并运行模拟测试。
 
-## 二、训练男声音色（RVC V2）
+## 二、RVC 旧版手动训练参考（/train-legacy）
 
 1. 使用内置的 `third_party/rvc` 源码，单独安装 RVC 的 Python 环境及依赖（推荐可用 CUDA GPU），取得 `assets/hubert_base/`、`assets/rmvpe/rmvpe.pt`、`assets/pretrained_v2/f0G48k.pth`、`f0D48k.pth` 等**官方**预训练权重。训练桥接脚本只适配仓库中具有 `train/preprocess.py`、`train/dataset/extract_f0.py`、`train/dataset/extract_hubert_feature.py`、`train/train.py`、`train/train_index.py` 的版本。
 2. 把得到授权的目标男声录音（建议有正常讲话和真实高音/唱歌内容）放到独立目录，比如 `D:\voice_data\male`。尽量避免音乐伴奏、噪声、明显削波和 TTS 合成伪影。训练阶段使用的是**目标男声**，不是要转换的女声音频。
@@ -114,7 +182,7 @@ ctest --preset linux
 /gpu 0
 /index on
 /train-timeout 43200
-/train
+/train-legacy
 ```
 
 训练开始后状态栏显示 `TRAINING`，中途使用 `/train-log` 查看最近输出，完整日志位于 `D:\myVoice\third_party\rvc\logs\male_v1\myvoice_train.log`。RVC 的模型权重通常在 `D:\myVoice\third_party\rvc\assets\weights\`，相关训练中间产物、检查点和索引位于 `D:\myVoice\third_party\rvc\logs\male_v1\`，索引可链接到 `assets/indices`。
@@ -122,7 +190,7 @@ ctest --preset linux
 - `epochs`：1..10000，实际训练效果需对照评估检查点；不是越大越好。
 - `batch`：1..128，显存不足时可降低；`/device cpu` 可用于排查/测试，但训练极慢。
 - `index off`：仅训练权重，不构建 FAISS 索引。
-- 训练不会自动下载模型权重，也不会自动从 IndexTTS 生成素材；如果使用合成数据，先自行生成和筛选。**只有高音真实覆盖的合格训练素材才可能改善高音失真**。
+- 旧版 /train-legacy 不会自动下载模型权重；智能 /train 则自动检查下载所需基础权重。**只有高音真实覆盖的合格训练素材才可能改善高音失真**。
 
 **提示**：某些 RVC 版本的训练脚本/资源布局不同。本实现针对已核对的 `RVC-Project/Retrieval-based-Voice-Conversion-WebUI` 的 `train/*` 结构；不保证兼容所有老分支或第三方打包版。失败时可从 `/train-log` 找到阶段和底层错误。
 
@@ -133,7 +201,6 @@ ctest --preset linux
 ```text
 /RVC
 /python "D:\myVoice\.venv-rvc\Scripts\python.exe"
-/engine rvc
 /model "D:\myVoice\third_party\rvc\assets\weights\male_v1.pth"
 /source "D:\audio\female.wav"
 /output "D:\audio\result.wav"

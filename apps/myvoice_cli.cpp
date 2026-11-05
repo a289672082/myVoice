@@ -43,12 +43,14 @@ int run(const std::vector<std::string>& args) {
     myvoice::TrainingRequest train_request;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& key = args[i];
-        const bool is_action = key == "/convert" || key == "/train";
+        const bool is_action = key == "/convert" || key == "/train" || key == "/train-legacy";
         if (request_conversion || request_training)
             throw std::invalid_argument("/convert or /train must be the final argument");
         if (key == "/Seed-VC" || key == "/seed-vc" || key == "/RVC" || key == "/rvc" ||
             key == "/back" || key == "/help" || key == "/show" ||
-            key == "/convert" || key == "/train" || key == "/train-log") {
+            key == "/convert" || key == "/train" || key == "/train-legacy" ||
+            key == "/train-log" || key == "/models" || key == "/quality-report" ||
+            key == "/unload-model") {
             const auto result = shell.execute(key);
             if (!result.success) throw std::invalid_argument(result.message);
             if (is_action) {
@@ -58,8 +60,8 @@ int run(const std::vector<std::string>& args) {
                     convert_request = shell.conversion_request();
                 } else {
                     request_training = true;
-                    train_configuration = shell.training_configuration;
-                    train_request = shell.training;
+                    train_configuration = shell.active_training_configuration();
+                    train_request = shell.active_training();
                 }
             } else if (!result.message.empty()) std::cout << result.message << '\n';
             continue;
@@ -75,7 +77,8 @@ int run(const std::vector<std::string>& args) {
     if (request_training) {
         const auto result = myvoice::VoiceTrainer(train_configuration).train(train_request);
         std::cout << "Training successful: " << result.experiment_dir.string()
-                  << "\nLog: " << result.log_file.string() << "\n";
+                  << "\nLog: " << result.log_file.string()
+                  << "\nRegistered model: " << result.primary_model.string() << "\n";
         return 0;
     }
     if (request_conversion) {

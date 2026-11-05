@@ -53,8 +53,20 @@ int main() {
         check(shell.menu() == ConsoleMenu::SeedVC, "must be in Seed-VC menu");
         check(contains(shell.suggestions("/con"), "/convert"), "Seed-VC conversion completion");
         check(contains(shell.suggestions("/engine s"), "/engine speech"), "Seed-VC engine suggestion");
-        check(!contains(shell.suggestions("/tr"), "/train"), "Seed-VC must hide RVC training");
-        check(!shell.execute("/train").success, "Seed-VC training is not supported");
+        check(contains(shell.suggestions("/tr"), "/train"), "Seed-VC V2 fine-tune completion");
+        check(shell.execute("/dataset seed_speech").success, "Seed dataset");
+        check(shell.execute("/device auto").success, "Seed hardware auto");
+        check(shell.execute("/train-steps 500").success && shell.seed_training.steps == 500, "Seed fine-tune steps");
+        check(shell.execute("/train").action == CommandAction::Train, "Seed-VC fine-tune action");
+        check(shell.active_training().engine == myvoice::TrainingEngine::SeedVC &&
+              shell.active_training().smart, "Seed-VC training route");
+        check(!shell.execute("/train-legacy").success, "Seed-VC legacy train prohibited");
+        check(shell.execute("/cfm-model seed_cfm.pth").success, "Seed CFM manual loading");
+        check(shell.execute("/ar-model seed_ar.pth").success, "Seed AR manual loading");
+        check(shell.execute("/models").success, "Seed models list");
+        check(shell.execute("/unload-model").success &&
+              shell.conversion_request().seed_cfm_model.empty(), "Seed unload fine-tuned model");
+        check(!shell.execute("/load-model unknown_name").success, "Unknown Seed model");
         check(!shell.execute("/model model.pth").success, "Seed-VC must reject RVC model");
         check(!shell.execute("/rvc-root path").success, "Seed-VC must reject RVC root");
         check(!shell.execute("/RVC").success, "must return to main before switching");
@@ -80,6 +92,7 @@ int main() {
         check(shell.execute("/rvc").success && shell.menu() == ConsoleMenu::Rvc, "enter RVC case-insensitively");
         check(contains(shell.suggestions("/tr"), "/train"), "RVC training completion");
         check(contains(shell.suggestions("/device c"), "/device cuda"), "RVC device completion");
+        check(contains(shell.suggestions("/device a"), "/device auto"), "RVC GPU auto completion");
         check(!contains(shell.suggestions("/engine"), "/engine singing"), "RVC menu should hide Seed-VC engine");
         check(!shell.execute("/engine singing").success, "RVC rejects Seed-VC engine");
         check(!shell.execute("/target target.wav").success, "RVC must reject target reference");
@@ -94,9 +107,19 @@ int main() {
         check(shell.execute("/device cuda").success, "CUDA mode");
         check(shell.execute("/epochs 50").success && shell.training.epochs == 50, "epochs");
         check(shell.execute("/index off").success && !shell.training.build_index, "index mode");
+        check(shell.execute("/batch auto").success && shell.training.batch_size == 0, "auto batch");
+        check(shell.execute("/gpu auto").success && shell.training.gpu == -1, "auto gpu");
+        check(shell.execute("/offline on").success && shell.training.offline, "offline training mode");
+        check(shell.execute("/offline off").success && !shell.training.offline, "online training mode");
+        check(shell.execute("/models").success, "model list without registry");
+        check(!shell.execute("/load-model never_trained").success, "unknown RVC model");
+        check(shell.execute("/quality-report").success, "quality report path");
         check(!shell.execute("/epochs 0").success, "bad epochs validation");
         check(!shell.execute("/train-log").success, "missing RVC log expected");
-        check(shell.execute("/train").action == CommandAction::Train, "RVC training action");
+        check(shell.execute("/train").action == CommandAction::Train && shell.active_training().smart,
+              "RVC auto training action");
+        check(shell.execute("/train-legacy").action == CommandAction::Train &&
+              !shell.active_training().smart, "RVC legacy compatibility");
         check(shell.execute("/convert").action == CommandAction::Convert, "RVC conversion action");
         check(shell.execute("/show").message.find("Train name:") != std::string::npos, "RVC summary");
         check(shell.conversion_configuration().python == std::filesystem::path("rvc_python"), "RVC Python not applied");

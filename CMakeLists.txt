@@ -63,6 +63,12 @@ if(BUILD_TESTING AND MYVOICE_BUILD_TESTS)
         add_test(NAME myvoice_cli_seed_help COMMAND myvoice_cli /Seed-VC /help)
         add_test(NAME myvoice_cli_rvc_help COMMAND myvoice_cli /RVC /help)
         add_test(NAME myvoice_cli_show COMMAND myvoice_cli /Seed-VC /engine singing /show)
+        add_test(NAME myvoice_smart_training_mock
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_smart_train.py")
+        set_tests_properties(myvoice_smart_training_mock PROPERTIES TIMEOUT 40)
+        add_test(NAME myvoice_smart_training_syntax
+            COMMAND "${Python3_EXECUTABLE}" -m py_compile
+                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/smart_train.py")
         add_test(NAME myvoice_rvc_training_mock
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rvc_train.py"
                     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/rvc_train.py")

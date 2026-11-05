@@ -83,6 +83,7 @@
     <ClInclude Include="..\include\myvoice\VoiceConverter.h" />
     <ClInclude Include="..\include\myvoice\EnginePaths.h" />
     <ClInclude Include="..\include\myvoice\PythonRuntime.h" />
+    <ClInclude Include="..\include\myvoice\ModelRegistry.h" />
     <ClInclude Include="..\include\myvoice\VoiceTrainer.h" />
     <ClInclude Include="..\src\Process.h" />
   </ItemGroup>
