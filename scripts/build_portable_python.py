@@ -79,11 +79,11 @@ def main():
         shutil.copytree(candidates[0], location, symlinks=True)
         py = executable(location)
         run([py, "-c", f"import sys; assert sys.version_info[:2]=={tuple(map(int,version.split('.')))}"])
-        run(["uv", "pip", "install", "--python", py, "--torch-backend", "cpu",
+        run(["uv", "pip", "install", "--python", py, "--break-system-packages", "--torch-backend", "cpu",
              f"torch=={torch}", f"torchvision=={vision}", f"torchaudio=={torch}"], env)
         req = tmp / "requirements-portable.txt"
         sanitized_requirements(ROOT / requirement, req)
-        run(["uv", "pip", "install", "--python", py, "--torch-backend", "cpu", "-r", req], env)
+        run(["uv", "pip", "install", "--python", py, "--break-system-packages", "--torch-backend", "cpu", "-r", req], env)
         verify(py, check)
         (location / "myvoice-python-runtime.json").write_text(
             json.dumps({"engine": args.engine, "platform": platform, "python": version,
