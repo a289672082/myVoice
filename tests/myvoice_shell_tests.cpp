@@ -45,8 +45,12 @@ int main() {
             fs::current_path(tmp);
             check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(cpu),
                   "CPU runtime selected without ready marker");
-            { std::ofstream ready(gpu.parent_path().parent_path() / "myvoice-gpu-ready.json");
-              ready << "{}"; }
+#ifdef _WIN32
+            const auto ready_file = gpu.parent_path() / "myvoice-gpu-ready.json";
+#else
+            const auto ready_file = gpu.parent_path().parent_path() / "myvoice-gpu-ready.json";
+#endif
+            { std::ofstream ready(ready_file); ready << "{}"; }
             check(myvoice::resolve_runtime_python({}, "rvc") == fs::canonical(gpu),
                   "GPU runtime selected when marker and interpreter exist");
             fs::current_path(original);
