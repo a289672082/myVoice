@@ -388,7 +388,13 @@ std::string CommandShell::summary() const {
     if (menu_ == ConsoleMenu::SeedVC) {
         o << "\nSeed-VC root: " << (cfg.seed_vc_root.empty() ? "third_party/seed-vc (bundled)" : as_string(cfg.seed_vc_root))
           << "\nTarget reference: " << as_string(req.target)
-          << "\nDiffusion steps: " << req.diffusion_steps;
+          << "\nDiffusion steps: " << req.diffusion_steps
+           << "\nSeed-VC V2 CFM: " << as_string(req.seed_cfm_model)
+           << "\nSeed-VC V2 AR: " << as_string(req.seed_ar_model)
+           << "\nTraining dataset: " << as_string(seed_training.dataset)
+           << "\nTrain name: " << seed_training.name
+           << "\nMax steps: " << seed_training.steps
+           << " | Device: " << seed_training.device;
     } else {
         o << "\nRVC root: " << (training_configuration.rvc_root.empty() ? "third_party/rvc (bundled)" : as_string(training_configuration.rvc_root))
           << "\nTrained model: " << as_string(req.trained_model)
@@ -416,11 +422,20 @@ std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const
     if (!allowed(menu_, key)) return {};
     std::string prefix = trim(line.substr(blank + 1));
     if (!prefix.empty() && (prefix[0] == '"' || prefix[0] == '\'')) prefix.erase(0, 1);
-    if (key == "/engine" || key == "/overwrite" || key == "/device" || key == "/index") {
+    if (key == "/engine" || key == "/overwrite" || key == "/device" ||
+        key == "/index" || key == "/offline") {
         const std::vector<std::string> choices = key == "/engine" ?
             std::vector<std::string>{"speech", "singing"} : key == "/device" ?
-            std::vector<std::string>{"cuda", "cpu"} : std::vector<std::string>{"on", "off"};
+            std::vector<std::string>{"auto", "cuda", "cpu"} : std::vector<std::string>{"on", "off"};
         for (const auto& c : choices) if (starts(c, prefix)) result.push_back({replacement(key, c), c});
+    } else if (key == "/load-model") {
+        try {
+            for (const auto& model : read_model_registry(default_model_registry(),
+                     menu_ == ConsoleMenu::SeedVC ? "seed-vc" : "rvc")) {
+                if (starts(model.name, prefix))
+                    result.push_back({replacement(key, model.name), model.name});
+            }
+        } catch (const fs::filesystem_error&) {}
     } else if (is_path(key)) {
         try {
             fs::path input = prefix.empty() ? fs::path(".") : as_path(prefix);
@@ -439,14 +454,17 @@ std::vector<Suggestion> CommandShell::suggestions(const std::string& line) const
             });
         } catch (const fs::filesystem_error&) { /* 无目录权限或目录不存在，补全静默失败 */ }
     } else if (key == "/steps" || key == "/timeout" || key == "/epochs" || key == "/batch" ||
-               key == "/save-every" || key == "/workers" || key == "/train-timeout" || key == "/gpu") {
+               key == "/save-every" || key == "/workers" || key == "/train-timeout" ||
+                key == "/gpu" || key == "/train-steps") {
         const std::vector<std::string> choices = key == "/steps" ?
             std::vector<std::string>{"30", "40", "60"} : key == "/epochs" ?
             std::vector<std::string>{"100", "200", "300"} : key == "/batch" ?
-            std::vector<std::string>{"2", "4", "8"} : key == "/save-every" ?
+            std::vector<std::string>{"auto", "1", "2", "4", "8"} : key == "/save-every" ?
             std::vector<std::string>{"10", "20", "50"} : key == "/workers" ?
-            std::vector<std::string>{"2", "4", "8"} : key == "/gpu" ?
-            std::vector<std::string>{"0", "1", "2"} : std::vector<std::string>{"300", "900", "1800"};
+            std::vector<std::string>{"auto", "2", "4", "8"} : key == "/gpu" ?
+            std::vector<std::string>{"auto", "0", "1", "2"} : key == "/train-steps" ?
+            std::vector<std::string>{"500", "1000", "2000"} :
+            std::vector<std::string>{"300", "900", "1800"};
         for (const auto& c : choices) if (starts(c, prefix)) result.push_back({replacement(key, c), c});
     }
     return result;
