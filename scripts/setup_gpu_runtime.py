@@ -21,6 +21,10 @@ import tempfile
 import urllib.request
 import zipfile
 
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 ROOT = Path(__file__).resolve().parents[1]
 UV_VERSION = "0.9.11"
 TORCH = {"rvc": ("2.4.1", "0.19.1"), "seed-vc": ("2.4.0", "0.19.0")}
@@ -150,6 +154,10 @@ def prepare(engine: str, *, dry_run: bool = False, uv_path: str | None = None) -
             print("[GPU] 复制 CPU 环境到独立临时目录...", flush=True)
             shutil.copytree(src, staging, symlinks=True)
             py = python_binary(staging)
+            # 如果解压包里含绝对符号链接，绝不能让 uv 意外修改原 CPU 环境。
+            resolved_py = py.resolve()
+            if resolved_py == python_binary(src).resolve() or src.resolve() in resolved_py.parents:
+                raise RuntimeError("便携 Python 符号链接指向 CPU 原目录，拒绝修改")
             torch, vision = TORCH[engine]
             print("[GPU] 正在安装匹配的 CUDA 版 PyTorch（可能占用数 GB）...", flush=True)
             subprocess.run([

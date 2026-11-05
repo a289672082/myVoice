@@ -126,7 +126,7 @@ def select_hardware(engine: str, requested: str = "auto", batch: int = 0,
         if requested == "auto":
             print("[硬件] 未找到 PyTorch 可用的 CUDA，退回 CPU（训练可能非常慢）", flush=True)
         return {"device": "cpu", "gpu": 0, "vram_gb": 0.0,
-                "batch": batch or 1, "workers": 0 if os.name == "nt" else 2}
+                "batch": batch or 1, "workers": (1 if engine == "rvc" else 0) if os.name == "nt" else 2}
     gpu = preferred_gpu
     if gpu < 0:
         gpu = max(range(cuda.device_count()),
@@ -141,7 +141,7 @@ def select_hardware(engine: str, requested: str = "auto", batch: int = 0,
         chosen = 8 if vram >= 16 else 4 if vram >= 10 else 2 if vram >= 6 else 1
     plan = {"device": "cuda", "gpu": gpu, "vram_gb": round(vram, 2),
             "name": props.name, "batch": batch or chosen,
-            "workers": 0 if os.name == "nt" else 2}
+            "workers": (1 if engine == "rvc" else 0) if os.name == "nt" else 2}
     print(f"[硬件] {props.name}, 显存 {vram:.1f} GiB, batch={plan['batch']}", flush=True)
     return plan
 

@@ -39,3 +39,8 @@ __pycache__/
 /third_party/seed-vc/runs/
 /third_party/rvc/logs/
 *.myvoice_quality_report.json
+
+# 独立 GPU Python 下载/解压输出
+/runtime/**
+!/runtime/README.md
+!/runtime/manifest.json
