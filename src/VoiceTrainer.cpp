@@ -75,6 +75,11 @@ TrainingResult VoiceTrainer::train(const TrainingRequest& req) const {
     const auto exp = root / (seed ? "runs" : "logs") / req.name;
     fs::create_directories(exp);
     const auto logfile = exp / "myvoice_train.log";
+    // 同名实验再次训练时，先清除上一次的“成功”状态，避免新手误看过期进度。
+    if (req.smart) {
+        std::error_code ignored;
+        fs::remove(exp / "myvoice_progress.txt", ignored);
+    }
     std::vector<fs::path> args;
     if (req.smart) {
         const auto script = project_script(configuration_.smart_script, "smart_train.py");
